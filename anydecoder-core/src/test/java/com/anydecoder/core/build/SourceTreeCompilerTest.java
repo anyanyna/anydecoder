@@ -195,6 +195,32 @@ class SourceTreeCompilerTest {
         assertTrue(result.missingJdkApi().isEmpty());
     }
 
+    @Test
+    @DisplayName("compiler diagnostics come back in English whatever the machine's locale is")
+    void diagnosticsAreEnglishRegardlessOfDefaultLocale(@TempDir Path work) throws Exception {
+        Path broken = write(work, "sample/Bad.java",
+                "package sample; public class Bad { int x = \"not an int\"; }");
+
+        // The build sets -Duser.language=en, which is exactly why nothing caught this: javac
+        // builds its message text from the JVM default locale, not from the locale handed to the
+        // file manager, so in production the diagnostics came back in Chinese while every test
+        // saw English. Reproducing the machine's condition is the only way to test the fix.
+        java.util.Locale previous = java.util.Locale.getDefault();
+        java.util.Locale.setDefault(java.util.Locale.SIMPLIFIED_CHINESE);
+        SourceTreeCompiler.Result result;
+        try {
+            result = new SourceTreeCompiler().compile(
+                    List.of(broken), work.resolve("classes"), List.of(), "17");
+        } finally {
+            java.util.Locale.setDefault(previous);
+        }
+
+        String reason = result.excluded().get(0).reason();
+        assertTrue(reason.codePoints().noneMatch(cp -> cp >= 0x4E00 && cp <= 0x9FFF),
+                "the message is quoted into reports and matched by the classifier, so a"
+                        + " localised one is unreliable for both: got " + reason);
+    }
+
     private static Path writeUnder(Path root, String relative, String source) throws Exception {
         Path file = root.resolve(relative);
         Files.createDirectories(file.getParent());

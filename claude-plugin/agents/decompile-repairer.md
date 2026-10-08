@@ -56,6 +56,9 @@ You repair one decompiled class so that recompiling it reproduces the original b
 | `members` reports a method missing | The decompiler gave up on a method and emitted nothing | Recover it from the other engines' trees, or rebuild it from the disassembly |
 | `members` reports a constructor missing or with wrong visibility | A constructor the decompiler overlooked, or a package-private class whose constructor it made public | Add it back with the original's modifiers |
 | `instrCount` alone, rebuild smaller by roughly 3 per extra `iinc` | ecj does not fold increment-by-one into `iinc`; javac does | **Nothing.** This is a compiler artefact. Report it as benign rather than editing |
+| `reference to append is ambiguous` between `CharSequence` and `char[]`, or any similar overload ambiguity | A `checkcast` the original had was dropped, so an argument is `Object` where the original narrowed it | Read the original's `checkcast` at that call and restore the cast. Verified on a real file: one cast, and the gate went to `EQUIVALENT` |
+| `incompatible types: X cannot be converted to Y` where Y is an implementation and X its interface | A local or parameter was declared with the concrete type the decompiler inferred rather than the interface the source named | Take the declared type from the original's `LocalVariableTable`, not from what the code appears to need |
+| `bad operand types for '=='`, `int` and `<nulltype>` | A local was declared `int` where the original had `Integer`, so a null check survived | Restore the boxed type from the original's `LocalVariableTable`. Expect the boxing calls to come back with it — the original has them |
 
 ## Rules
 
