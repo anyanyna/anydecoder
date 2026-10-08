@@ -113,15 +113,28 @@ at all when any file fails to compile. On the validation corpus, 2451 decompiled
 unusually bad — that is what raw decompiler output looks like — but because one broken file
 blocked the whole rebuild.
 
-The peel compiles everything; if that fails, it removes the files the compiler named and compiles
-again, until it succeeds or stops making progress. References from the surviving files to the
-removed ones resolve against the original class files on the classpath, so removing a broken file
-does not cascade. The cost is a handful of whole-tree compiles rather than the thousands an
-isolated per-file compile would need — the approach the original toolchain used, at roughly six
-seconds per file.
+The peel compiles everything; if that fails, it takes the files the compiler named and either
+**substitutes another engine's rendering** or sets them aside, then compiles again. References from
+the remaining files to the ones set aside resolve against the original class files on the
+classpath, so setting one aside does not cascade. The cost is a handful of whole-tree compiles
+rather than the thousands an isolated per-file compile would need — the approach the original
+toolchain used, at roughly six seconds per file.
 
-What it produces is the repair worklist: the files that need attention, separated from the two
-thousand that are already fine.
+The substitution is worth stating plainly, because it is the reason running two engines matters.
+Decompilers fail on different inputs, and a file the first could not structure is often one the
+second handled. Discarding the second engine's tree after using it only as a cross-check leaves
+its most useful output on the floor. The substituted file is compiled and gated like anything
+else, so a worse rendering is caught by the comparison rather than preferred by assumption, and
+the report names which files came from where.
+
+What the peel produces is two lists that call for different work:
+
+- **source defects** — the decompiler lost the structure and the file will not parse. Each carries
+  the compiler's own message. This is the repair worklist.
+- **APIs the JDK no longer ships** — `sun.misc.BASE64Encoder` and the like cannot be rebuilt on a
+  modern JDK at all, since the class was removed in Java 9 and no `--release` brings it back.
+  Nothing is claimed about those classes either way, and reporting them beside a structure
+  collapse would send a reader to repair source that is fine.
 
 ### `gate`
 

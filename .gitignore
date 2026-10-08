@@ -9,13 +9,13 @@ anydecoder-out/
 # development; none of it belongs in the repository, and some of it is not ours to publish.
 _scratch/
 
-# Nothing under validation/ is tracked except the documentation. It is where a
-# corpus is pointed at and where runs write: the corpus is a third party's
-# compiled code and its decompilation is derived from it, so neither belongs in
-# this repository. Only the prose about how to run it does.
+# Nothing under validation/ is tracked except the scripts and the documentation. It is where a
+# corpus is pointed at and where runs write: the corpus is a third party's compiled code and its
+# decompilation is derived from it, so neither belongs in this repository.
 validation/*
 !validation/README.md
 !validation/RESULTS.md
+!validation/scripts/
 
 # IDE
 .idea/

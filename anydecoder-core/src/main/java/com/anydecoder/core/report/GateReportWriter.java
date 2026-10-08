@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Renders a run's result as Markdown and as JSON.
@@ -70,16 +71,24 @@ public final class GateReportWriter {
         List<ClassVerdict> review = report.needingReview();
         if (!review.isEmpty()) {
             sb.append("## Needs review\n\n");
-            for (ClassVerdict verdict : review) {
-                sb.append("### `").append(verdict.className()).append("` — ")
-                        .append(verdict.verdict()).append("\n\n");
-                for (Divergence divergence : verdict.unexplained()) {
-                    sb.append("- **").append(divergence.signalId()).append("** (")
-                            .append(divergence.severity()).append(") in `")
-                            .append(divergence.member()).append("`: ")
-                            .append(divergence.detail()).append('\n');
-                }
-                sb.append('\n');
+            sb.append("Ordered by cause, so the findings most likely to be real defects come"
+                    + " first. Evidence is shown for each: both sides of the comparison, so the"
+                    + " claim can be checked rather than taken on trust.\n\n");
+
+            Map<String, List<ClassVerdict>> byCause = new TreeMap<>();
+            review.forEach(v -> v.unexplained().forEach(d ->
+                    byCause.computeIfAbsent(d.signalId(), k -> new java.util.ArrayList<>()).add(v)));
+
+            sb.append("| signal | classes | what it means |\n|---|---:|---|\n");
+            byCause.forEach((signal, classes) -> sb.append("| `").append(signal).append("` | ")
+                    .append(classes.stream().distinct().count()).append(" | ")
+                    .append(CAUSE.getOrDefault(signal, "")).append(" |\n"));
+            sb.append('\n');
+
+            for (String signal : byCause.keySet()) {
+                sb.append("### ").append(signal).append("\n\n");
+                byCause.get(signal).stream().distinct().forEach(verdict ->
+                        appendClassFindings(sb, verdict, signal));
             }
         }
 
@@ -151,6 +160,35 @@ public final class GateReportWriter {
                 + " behaviour. Differential testing covers the second where it is enabled.\n");
 
         return sb.toString();
+    }
+
+    private static final Map<String, String> CAUSE = Map.of(
+            "excp", "the exception table changed: a dropped try, a swallowed handler, or a finally rendered as try-with-resources",
+            "athrow", "a rethrow became a jump; the exception may be swallowed",
+            "invokes", "a call was added, removed, or moved to another member",
+            "fields", "a field is touched on one side only, as a different opcode",
+            "consts", "a loaded constant changed",
+            "api", "the declared members or class flags changed",
+            "members", "a method is missing from one side",
+            "instrCount", "the body changed size beyond what a compiler difference explains",
+            "lvt", "a local variable's declared type changed");
+
+    private static void appendClassFindings(StringBuilder sb, ClassVerdict verdict, String signal) {
+        sb.append("- `").append(verdict.className().replace('/', '.')).append("`\n");
+        for (Divergence divergence : verdict.unexplained()) {
+            if (!divergence.signalId().equals(signal)) {
+                continue;
+            }
+            sb.append("  - ").append(divergence.severity()).append(" in `")
+                    .append(divergence.member()).append("`: ").append(divergence.detail())
+                    .append('\n');
+            divergence.evidence().forEach((key, value) -> {
+                if (value != null && !value.isEmpty()) {
+                    sb.append("    - ").append(key).append(": `")
+                            .append(value.replace("`", "'")).append("`\n");
+                }
+            });
+        }
     }
 
     /**

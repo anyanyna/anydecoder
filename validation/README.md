@@ -44,13 +44,24 @@ The corpus is roughly 200 MB and is not vendored into this repository. Point the
 copy:
 
 ```bash
-java -Xmx4g -jar anydecoder-cli/target/anydecoder.jar run \
-  <corpus>/support/classes.backup \
-  -o validation/out/consolidation \
-  --deps <corpus>/src/main/webapp/WEB-INF/lib
+validation/scripts/run-corpus.sh <classes-or-archive> <dependency-dir>
 ```
 
 Budget about half an hour: decompiling 2984 classes dominates, and Vineflower is the slow half.
+
+### The test worth running first
+
+If you have source whose fidelity is already known — recovered by hand, verified some other way,
+or simply never lost — run **that** through the gate instead:
+
+```bash
+validation/scripts/gate-verified-source.sh <original-classes> <source-root> <dependency-dir>
+```
+
+It is the stronger test. Running anydecoder end to end conflates two things: whether the
+decompiler produced good source, and whether the gate judges it correctly. Gating source you
+already trust isolates the second, and the expected answer is known in advance — which is what
+makes a false positive visible at all. That is how every tolerance in this project was calibrated.
 
 ## Reading the result
 

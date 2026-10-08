@@ -192,15 +192,34 @@ public final class GateCommand implements Callable<Integer> {
         return Json.write(root);
     }
 
+    /**
+     * A review list, ordered so a reader can work down it.
+     *
+     * <p>Evidence is included for every finding. A report that says only "the call targets differ"
+     * leaves the reader to re-derive the comparison before they can even judge the claim, which
+     * is most of the work; showing both sides makes the judgement cheap and the finding
+     * falsifiable.
+     *
+     * <p>Ordering is by cause rather than alphabetically: a class whose exception table changed is
+     * more likely to be a real defect than one where a field is written a different number of
+     * times, and burying the first among the second wastes the reader's attention.
+     */
     private String renderMarkdown(GateReport report) {
         StringBuilder sb = new StringBuilder();
+        sb.append("# Gate report\n\n");
+
         sb.append("| verdict | count |\n|---|---:|\n");
         report.counts().forEach((verdict, count) ->
                 sb.append("| ").append(verdict).append(" | ").append(count).append(" |\n"));
         sb.append('\n');
-        sb.append("coverage: ").append(report.gated()).append('/').append(report.total()).append('\n');
+        sb.append("- classes gated: ").append(report.gated()).append(" of ").append(report.total())
+                .append('\n');
+        if (report.gated() < report.total()) {
+            sb.append("- **").append(report.total() - report.gated())
+                    .append(" class(es) were never reached and are not passes**\n");
+        }
         if (release != null) {
-            sb.append("rebuilt at release: ").append(release).append('\n');
+            sb.append("- rebuilt at release: ").append(release).append('\n');
         }
         sb.append('\n');
 
@@ -209,15 +228,57 @@ public final class GateCommand implements Callable<Integer> {
             sb.append("Nothing needs review.\n");
             return sb.toString();
         }
+
+        Map<String, List<ClassVerdict>> byCause = new java.util.TreeMap<>();
         for (ClassVerdict verdict : review) {
-            sb.append("### ").append(verdict.verdict()).append(' ')
-                    .append(verdict.className()).append('\n');
-            for (Divergence d : verdict.unexplained()) {
-                sb.append("- [").append(d.signalId()).append("] ").append(d.member())
-                        .append(": ").append(d.detail()).append('\n');
+            for (Divergence divergence : verdict.unexplained()) {
+                byCause.computeIfAbsent(divergence.signalId(), k -> new ArrayList<>()).add(verdict);
+            }
+        }
+
+        sb.append("## By cause\n\n");
+        sb.append("| signal | classes | what it means |\n|---|---:|---|\n");
+        byCause.forEach((signal, classes) -> sb.append("| `").append(signal).append("` | ")
+                .append(classes.stream().distinct().count()).append(" | ")
+                .append(CAUSE.getOrDefault(signal, "")).append(" |\n"));
+        sb.append('\n');
+
+        for (ClassVerdict verdict : review) {
+            sb.append("### ").append(verdict.verdict()).append(" `")
+                    .append(verdict.className().replace('/', '.')).append("`\n\n");
+            if (verdict.note() != null) {
+                sb.append("> ").append(verdict.note()).append("\n\n");
+            }
+            for (Divergence divergence : verdict.unexplained()) {
+                sb.append("- **").append(divergence.signalId()).append("** (")
+                        .append(divergence.severity()).append(") in `")
+                        .append(divergence.member()).append("`\n");
+                sb.append("  - ").append(divergence.detail()).append('\n');
+                evidenceLines(divergence, sb);
             }
             sb.append('\n');
         }
         return sb.toString();
+    }
+
+    private static final Map<String, String> CAUSE = Map.of(
+            "excp", "the exception table changed: a dropped try, a swallowed handler, or a finally rendered as try-with-resources",
+            "athrow", "a rethrow became a jump; the exception may be swallowed",
+            "invokes", "a call was added, removed, or moved to another member",
+            "fields", "a field is touched on one side only, as a different opcode",
+            "consts", "a loaded constant changed",
+            "api", "the declared members or class flags changed",
+            "members", "a method is missing from one side",
+            "instrCount", "the body changed size beyond what a compiler difference explains",
+            "lvt", "a local variable's declared type changed");
+
+    private static void evidenceLines(Divergence divergence, StringBuilder sb) {
+        for (Map.Entry<String, String> entry : divergence.evidence().entrySet()) {
+            if (entry.getValue() == null || entry.getValue().isEmpty()) {
+                continue;
+            }
+            sb.append("    - ").append(entry.getKey()).append(": `")
+                    .append(entry.getValue().replace("`", "'")).append("`\n");
+        }
     }
 }

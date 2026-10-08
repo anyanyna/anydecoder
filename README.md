@@ -104,6 +104,12 @@ Only the project's own classes are decompiled. Dependency jars sit on the classp
 rebuild resolves the same types the original did — decompiling them would multiply the work while
 answering a question nobody asked.
 
+Two engines run by default, and the second is not only a cross-check. Decompilers fail on
+different inputs, so **a file the first engine could not structure is replaced by the second's
+rendering** before it is given up on. Whatever ends up in the tree is compiled and gated like
+anything else, so a worse rendering is caught rather than preferred by assumption. The report
+lists which files came from which engine.
+
 ### The gate
 
 Per method, compared against the original:
