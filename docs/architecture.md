@@ -107,6 +107,22 @@ The `--release` is taken from the original classes' major version. Compiling Jav
 source at release 17 changes string concatenation to `invokedynamic`, and every concatenating
 method would then differ for reasons unrelated to the source.
 
+`SourceTreeCompiler` wraps it with a **peel**, and it exists because javac emits no class files
+at all when any file fails to compile. On the validation corpus, 2451 decompiled files produced
+100 compiler errors and the gate therefore reached **zero** classes: not because the source was
+unusually bad — that is what raw decompiler output looks like — but because one broken file
+blocked the whole rebuild.
+
+The peel compiles everything; if that fails, it removes the files the compiler named and compiles
+again, until it succeeds or stops making progress. References from the surviving files to the
+removed ones resolve against the original class files on the classpath, so removing a broken file
+does not cascade. The cost is a handful of whole-tree compiles rather than the thousands an
+isolated per-file compile would need — the approach the original toolchain used, at roughly six
+seconds per file.
+
+What it produces is the repair worklist: the files that need attention, separated from the two
+thousand that are already fine.
+
 ### `gate`
 
 `ClassModelReader` builds a `ClassModel` with ASM. This replaced `javap` text scraping, which

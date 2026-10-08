@@ -1,7 +1,7 @@
 package com.anydecoder.core.pipeline;
 
 import com.anydecoder.core.build.CompileOutcome;
-import com.anydecoder.core.build.ProjectCompiler;
+import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.engine.CfrDecompiler;
 import com.anydecoder.core.engine.Decompiler;
 import com.anydecoder.core.engine.ProcyonDecompiler;
@@ -65,13 +65,15 @@ public final class DecoderPipeline {
                     .applyTo(primary, log).filesPerPass();
         }
 
-        CompileOutcome compile = rebuild(options, artifacts, primary, log);
-        log.printf("[build] %d source file(s), %d error(s)%n",
-                countSources(primary), compile.errorCount());
+        SourceTreeCompiler.Result rebuild = rebuild(options, artifacts, primary, log);
+        CompileOutcome compile = rebuild.compile();
+        log.printf("[build] %d source file(s) compiled, %d removed as uncompilable, %d round(s)%n",
+                countSources(primary) - rebuild.excluded().size(), rebuild.excluded().size(),
+                rebuild.rounds());
 
         GateReport report = runGate(artifacts.projectClasses(), compile.outputDirectory(), log);
 
-        return new PipelineOutcome(artifacts, trees, primary, compile, report,
+        return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(), report,
                 compile.outputDirectory(), normalizationCounts);
     }
 
@@ -123,20 +125,22 @@ public final class DecoderPipeline {
         return trees;
     }
 
-    private CompileOutcome rebuild(PipelineOptions options, ArtifactSet artifacts,
-                                   Path primarySource, PrintStream log) throws IOException {
+    private SourceTreeCompiler.Result rebuild(PipelineOptions options, ArtifactSet artifacts,
+                                              Path primarySource, PrintStream log) throws IOException {
         List<Path> sources = javaFiles(primarySource);
         List<Path> classpath = new ArrayList<>(artifacts.dependencyJars());
         // The original classes go on the classpath so that any type the decompiler could not
         // reproduce still resolves. Without this, a single missing class cascades into hundreds
-        // of "cannot find symbol" errors that say nothing about the source under test.
+        // of "cannot find symbol" errors that say nothing about the source under test -- and
+        // with the peel in SourceTreeCompiler, it is also what stops one broken file from
+        // taking every file that references it down with it.
         classpath.add(artifacts.projectClasses());
 
         String release = dominantRelease(artifacts.projectClasses());
         log.printf("[build] compiling %d source file(s) at release %s%n", sources.size(), release);
 
-        return new ProjectCompiler().compile(
-                sources, options.workDir().resolve("classes"), classpath, release);
+        return new SourceTreeCompiler().compile(sources, options.workDir().resolve("classes"),
+                classpath, release, log::println);
     }
 
     private GateReport runGate(Path originalClasses, Path rebuiltClasses, PrintStream log)

@@ -100,8 +100,10 @@ public final class GateReportWriter {
 
         sb.append("## Build\n\n");
         CompileOutcome compile = outcome.compile();
-        sb.append("- source files compiled: ").append(countSources(outcome)).append('\n');
-        sb.append("- compiler errors: ").append(compile.errorCount()).append('\n');
+        sb.append("- source files compiled: ").append(outcome.compiledSourceCount()).append('\n');
+        sb.append("- sources removed as uncompilable: ")
+                .append(outcome.unbuildableSources().size()).append('\n');
+        sb.append("- compiler errors in the final round: ").append(compile.errorCount()).append('\n');
         if (compile.errorCount() > 0) {
             sb.append('\n').append("```\n");
             compile.errors().stream().limit(20).forEach(d -> sb.append(d.render()).append('\n'));
@@ -111,6 +113,20 @@ public final class GateReportWriter {
             sb.append("```\n");
         }
         sb.append('\n');
+
+        if (!outcome.unbuildableSources().isEmpty()) {
+            sb.append("### Sources that would not compile\n\n");
+            sb.append("Removed from the rebuild so that the rest could be checked. Their classes"
+                    + " are absent, so the gate did not reach them and they are **not** passes."
+                    + " This is the repair worklist.\n\n");
+            outcome.unbuildableSources().stream().limit(60).forEach(p ->
+                    sb.append("- `").append(relativeTo(outcome.primarySource(), p)).append("`\n"));
+            if (outcome.unbuildableSources().size() > 60) {
+                sb.append("- ... and ").append(outcome.unbuildableSources().size() - 60)
+                        .append(" more\n");
+            }
+            sb.append('\n');
+        }
 
         if (!outcome.normalization().isEmpty()) {
             sb.append("## Cleanup passes\n\n");
@@ -189,8 +205,16 @@ public final class GateReportWriter {
 
         Map<String, Object> build = new LinkedHashMap<>();
         build.put("compilerErrors", outcome.compile().errorCount());
-        build.put("sourcesCompiled", countSources(outcome));
+        build.put("sourcesCompiled", outcome.compiledSourceCount());
+        build.put("sourcesRemovedAsUncompilable", outcome.unbuildableSources().size());
         root.put("build", build);
+
+        // The repair worklist: files whose classes never reached the gate because they do not
+        // compile. Separated from needsReview so a caller can dispatch a fixer at these without
+        // mixing them up with classes that were compared and differed.
+        root.put("uncompilable", outcome.unbuildableSources().stream()
+                .map(p -> relativeTo(outcome.primarySource(), p))
+                .toList());
 
         root.put("cleanupPasses", new LinkedHashMap<String, Object>(outcome.normalization()));
 
@@ -211,22 +235,29 @@ public final class GateReportWriter {
         if (report.total() == 0) {
             return "nothing to gate";
         }
-        int review = report.needingReview().size();
-        if (review == 0) {
-            return report.safeCount() + " of " + report.gated() + " classes shown equivalent";
+        if (report.gated() == 0) {
+            return "the gate reached no classes: nothing was rebuilt";
         }
-        return review + " of " + report.gated() + " classes need review";
+        int review = report.needingReview().size();
+        String unreached = report.gated() == report.total()
+                ? ""
+                : ", " + (report.total() - report.gated()) + " not reached";
+        if (review == 0) {
+            return report.safeCount() + " of " + report.gated() + " classes shown equivalent"
+                    + unreached;
+        }
+        return review + " of " + report.gated() + " classes need review" + unreached;
     }
 
     private static double round(double value) {
         return Math.round(value * 10000.0) / 10000.0;
     }
 
-    private static int countSources(PipelineOutcome outcome) {
+    private static String relativeTo(java.nio.file.Path root, java.nio.file.Path file) {
         try {
-            return com.anydecoder.core.pipeline.DecoderPipeline.javaFiles(outcome.primarySource()).size();
-        } catch (Exception e) {
-            return -1;
+            return root.relativize(file).toString().replace('\\', '/');
+        } catch (IllegalArgumentException e) {
+            return file.toString();
         }
     }
 }
