@@ -88,6 +88,13 @@ public final class ProjectCompiler {
             // message, or a use of sun.misc -- never indicate a decompilation defect. javac
             // has no -Xlint category for the sun.misc notice; -nowarn already covers it.
             options.add("-Xlint:-options");
+            // javac stops after 100 errors by default. That cap is not a detail here: it makes
+            // a tree with 4800 errors look like one with 100, and SourceTreeCompiler peels
+            // against the list it is given, so it would remove a hundred files per round
+            // instead of all of them at once. Measured on the validation corpus, raising it
+            // took the peel from more than twenty rounds to two.
+            options.add("-Xmaxerrs");
+            options.add("100000");
             options.addAll(extraOptions);
 
             boolean ok;

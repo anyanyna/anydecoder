@@ -183,6 +183,20 @@ same simple name.
 The check is on whole identifiers, and the gate is the backstop: a removal that changed the
 bytecode shows up as a worse verdict.
 
+### javac silently stops after 100 errors
+
+The default `-Xmaxerrs` is 100. On the validation corpus the first rebuild reported exactly 100
+errors; the real number was around 4800, which matches what the original nine-day recovery
+measured from the other direction.
+
+This is not a cosmetic undercount. Anything that acts on the error list acts on a truncated one:
+`SourceTreeCompiler` peels the files the compiler names and retries, so with the cap in place it
+removed a hundred files per round and took more than twenty rounds to converge. Raising the limit
+took it to two.
+
+If you write tooling that reads compiler diagnostics, raise the cap explicitly. There is no
+signal in the output that it was applied.
+
 ### Two classpath orders can resolve differently
 
 When jars overlap, `-cp "lib/*"` expands in alphabetical order while an IDE resolves in the order

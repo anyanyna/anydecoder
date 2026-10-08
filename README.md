@@ -115,10 +115,14 @@ Per method, compared against the original:
 | `excp` | a dropped `try`, a swallowed handler, a `finally` turned into try-with-resources | **hard** |
 | `athrow` | a rethrow turned into a jump | hard |
 | `invokes` | a duplicated or missing call, a rebound overload | hard |
-| `fields` | a changed field access, instance versus static | hard |
+| `fields` | a field touched on one side only, or as a different opcode | hard¹ |
 | `consts` | a changed constant | hard |
 | `instrCount` | code silently dropped or invented | suspect |
 | `lvt` | a local declared with a wider or narrower type | advisory |
+
+¹ A field touched on one side only is hard; the same field touched a *different number of times*
+is `SUSPECT`, because a compiler may duplicate a store into each arm of a conditional. See
+[the reasoning](docs/verification.md#fields--field-accesses--hard-with-a-caveat-about-counts).
 
 The hard part is not the comparison, it is knowing what to ignore. Two compilers disagree about
 constant-pool numbering, branch offsets, local variable slots, member order, synthetic accessor

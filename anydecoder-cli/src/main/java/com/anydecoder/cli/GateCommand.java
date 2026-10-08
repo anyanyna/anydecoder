@@ -6,6 +6,8 @@ import com.anydecoder.core.gate.ClassModelReader;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
 import com.anydecoder.core.gate.GateReport;
+import com.anydecoder.core.gate.HierarchyIndex;
+import com.anydecoder.core.ingest.ArtifactScanner;
 import com.anydecoder.core.report.Json;
 import picocli.CommandLine;
 
@@ -57,6 +59,12 @@ public final class GateCommand implements Callable<Integer> {
             description = "Java release used when the rebuild was compiled. Informational.")
     private String release;
 
+    @CommandLine.Option(names = {"-d", "--deps"}, split = ",",
+            description = "Dependency jars, so that a receiver narrowed from an interface to its"
+                    + " implementation is recognised as the same member. Without them such calls"
+                    + " are reported as different, which is noisy but not wrong.")
+    private List<Path> dependencies;
+
     @Override
     public Integer call() throws Exception {
         List<Path> originals = selectOriginals();
@@ -65,7 +73,13 @@ public final class GateCommand implements Callable<Integer> {
             return 2;
         }
 
-        ClassGate gate = new ClassGate();
+        List<Path> hierarchyClasspath = new ArrayList<>();
+        hierarchyClasspath.add(originalClasses);
+        if (dependencies != null) {
+            // A directory means "the jars in it", which is what a person means by a lib folder.
+            hierarchyClasspath.addAll(ArtifactScanner.expandDependencies(dependencies));
+        }
+        ClassGate gate = new ClassGate(new HierarchyIndex(hierarchyClasspath));
         List<ClassVerdict> verdicts = originals.parallelStream()
                 .map(original -> gateOne(gate, original))
                 .sorted(Comparator.comparing(ClassVerdict::className))
@@ -158,6 +172,12 @@ public final class GateCommand implements Callable<Integer> {
                 finding.put("severity", d.severity().name());
                 finding.put("member", d.member());
                 finding.put("detail", d.detail());
+                // The original and rebuilt values side by side. Without them a reader has to
+                // re-derive the comparison by hand to judge whether a finding is real, which
+                // defeats the point of reporting evidence at all.
+                if (!d.evidence().isEmpty()) {
+                    finding.put("evidence", new LinkedHashMap<String, Object>(d.evidence()));
+                }
                 findings.add(finding);
             }
             entry.put("findings", findings);

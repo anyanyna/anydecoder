@@ -66,6 +66,31 @@ public final class ArtifactScanner {
                 + " (looked for classes directly, in classes/, and in " + WEB_INF_CLASSES + ")");
     }
 
+    /**
+     * Expand a caller-supplied list of dependency paths into actual jars.
+     *
+     * <p>A directory is taken to mean "the jars in here", which is what a person means when they
+     * point at a {@code lib} folder. Getting this wrong is quiet and costly: the hierarchy index
+     * then cannot resolve any type from those jars, so a receiver narrowed from an interface to
+     * its implementation looks like a call on an unrelated class.
+     */
+    public static List<Path> expandDependencies(List<Path> entries) throws IOException {
+        List<Path> jars = new ArrayList<>();
+        for (Path entry : entries) {
+            if (Files.isDirectory(entry)) {
+                for (Path jar : jarsIn(entry)) {
+                    if (!jars.contains(jar)) {
+                        jars.add(jar);
+                    }
+                }
+            } else if (Files.isReadable(entry) && !jars.contains(entry)) {
+                jars.add(entry);
+            }
+        }
+        jars.sort(Comparator.comparing(Path::toString));
+        return jars;
+    }
+
     private static List<Path> jarsIn(Path directory) throws IOException {
         if (!Files.isDirectory(directory)) {
             return List.of();

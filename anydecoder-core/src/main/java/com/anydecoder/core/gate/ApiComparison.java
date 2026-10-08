@@ -48,9 +48,35 @@ public final class ApiComparison {
                 .withEvidence("rebuilt", b.keySet().stream().sorted().toList().toString()));
     }
 
+    /**
+     * The class-level access flags that carry source-level meaning.
+     *
+     * <p>{@code ACC_FINAL} is masked off for anonymous classes, which ecj marks final and javac
+     * does not. The flag cannot be written on an anonymous class and nothing can name one to
+     * extend it, so it is inert -- and leaving it in reported every anonymous class in the corpus
+     * as an API difference.
+     */
+    private static int classFlags(ClassModel model) {
+        int access = model.access();
+        if (isAnonymous(model.name())) {
+            access &= ~Opcodes.ACC_FINAL;
+        }
+        return access;
+    }
+
+    /** {@code Outer$1}, {@code Outer$1$2} and the like: classes with no source-level name. */
+    private static boolean isAnonymous(String internalName) {
+        int dollar = internalName.lastIndexOf('$');
+        if (dollar < 0 || dollar == internalName.length() - 1) {
+            return false;
+        }
+        String tail = internalName.substring(dollar + 1);
+        return tail.chars().allMatch(Character::isDigit);
+    }
+
     private static List<String> members(ClassModel model) {
         List<String> out = new ArrayList<>();
-        out.add("class flags=0x" + Integer.toHexString(model.access())
+        out.add("class flags=0x" + Integer.toHexString(classFlags(model))
                 + " extends " + model.superName()
                 + " implements " + model.interfaces().stream().sorted().toList());
         for (FieldModel f : model.fields()) {

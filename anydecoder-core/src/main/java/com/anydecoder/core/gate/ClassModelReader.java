@@ -170,10 +170,12 @@ public final class ClassModelReader {
             return new Insn(opcode, mnemonic, t.desc, OpcodeSafety.canThrow(opcode));
         }
         if (node instanceof FieldInsnNode f) {
-            return new Insn(opcode, mnemonic, f.owner + "." + f.name + ":" + f.desc, true);
+            return new Insn(opcode, mnemonic,
+                    f.owner + "." + canonicalMemberName(f.name) + ":" + f.desc, true);
         }
         if (node instanceof MethodInsnNode mi) {
-            return new Insn(opcode, mnemonic, mi.owner + "." + mi.name + mi.desc, true);
+            return new Insn(opcode, mnemonic,
+                    mi.owner + "." + canonicalMemberName(mi.name) + mi.desc, true);
         }
         if (node instanceof InvokeDynamicInsnNode indy) {
             // The bootstrap method is synthesised by the compiler; name and descriptor are
@@ -214,6 +216,31 @@ public final class ClassModelReader {
             return new Insn(opcode, mnemonic, ma.desc + " x" + ma.dims, true);
         }
         return new Insn(opcode, mnemonic, "", OpcodeSafety.canThrow(opcode));
+    }
+
+    /**
+     * Collapses the numbering on the synthetic accessors a compiler generates for inner-class
+     * access.
+     *
+     * <p>These names are pure compiler bookkeeping and the two compilers number them differently:
+     * ecj writes {@code access$0}, {@code access$1} by order of generation, javac writes
+     * {@code access$000}, {@code access$100} encoding the kind of member reached. A call to one
+     * is a call to an accessor, in both cases.
+     *
+     * <p>What this gives up is the ability to tell two different accessors apart within one
+     * method. That is affordable, because an accessor's own body is compared like any other
+     * method, and it is the real member access inside it that carries meaning.
+     */
+    static String canonicalMemberName(String name) {
+        if (!name.startsWith("access$") || name.length() == "access$".length()) {
+            return name;
+        }
+        for (int i = "access$".length(); i < name.length(); i++) {
+            if (!Character.isDigit(name.charAt(i))) {
+                return name;
+            }
+        }
+        return "access$";
     }
 
     private static String arrayTypeName(int operand) {

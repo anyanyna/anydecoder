@@ -46,7 +46,9 @@ public final class BenignDivergenceClassifier {
     private BenignDivergenceClassifier() {
     }
 
-    public static Result classify(MethodModel original, MethodModel rebuilt, List<Divergence> divergences) {
+    public static Result classify(ClassModel originalClass, ClassModel rebuiltClass,
+                                  MethodModel original, MethodModel rebuilt,
+                                  List<Divergence> divergences) {
         List<Divergence> blocking = divergences.stream()
                 .filter(d -> d.severity() != Severity.ADVISORY)
                 .toList();
@@ -59,6 +61,8 @@ public final class BenignDivergenceClassifier {
         tryExplainMissingIincOptimization(original, rebuilt, blocking, unexplained, explanations);
         tryExplainFieldStoreHoisting(original, rebuilt, blocking, unexplained, explanations);
         tryExplainBoxing(original, rebuilt, blocking, unexplained, explanations);
+        tryExplainEnumInitialization(originalClass, rebuiltClass, original, blocking,
+                unexplained, explanations);
 
         return new Result(unexplained.isEmpty(), explanations, unexplained);
     }
@@ -270,6 +274,67 @@ public final class BenignDivergenceClassifier {
             }
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Enum constants are built differently by the two compilers.
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Excuses a difference confined to an enum's static initialiser.
+     *
+     * <p>ecj and javac construct an enum's constant table quite differently -- ecj writes each
+     * constant and the backing array inline, javac from JDK 15 on routes through a synthetic
+     * {@code $values()} helper -- so the initialiser legitimately differs by more than a quarter
+     * of its instructions.
+     *
+     * <p>The check that keeps this honest is on the fields: the class must declare the same set
+     * of them. A missing enum constant would show up there, and excusing a difference in
+     * {@code <clinit>} without that guard would let a lost constant pass as a compiler artefact.
+     */
+    private static void tryExplainEnumInitialization(
+            ClassModel originalClass, ClassModel rebuiltClass,
+            MethodModel original, List<Divergence> blocking,
+            List<Divergence> unexplained, List<Explanation> explanations) {
+
+        if (!original.name().equals("<clinit>") || !isEnum(originalClass)) {
+            return;
+        }
+        if (!onlySignals(blocking, "invokes", "fields", "instrCount")) {
+            return;
+        }
+        java.util.Set<String> declared = new java.util.TreeSet<>();
+        originalClass.fields().forEach(f -> declared.add(f.name()));
+        java.util.Set<String> rebuiltDeclared = new java.util.TreeSet<>();
+        rebuiltClass.fields().forEach(f -> rebuiltDeclared.add(f.name()));
+
+        if (!declared.equals(rebuiltDeclared)) {
+            // A constant was added or removed; the initialiser difference is not the only one.
+            return;
+        }
+
+        List<Divergence> toRemove = new ArrayList<>();
+        for (Divergence divergence : unexplained) {
+            if (divergence.signalId().equals("invokes")
+                    || divergence.signalId().equals("fields")
+                    || divergence.signalId().equals("instrCount")) {
+                toRemove.add(divergence);
+            }
+        }
+        if (toRemove.isEmpty()) {
+            return;
+        }
+        unexplained.removeAll(toRemove);
+        explanations.add(new Explanation(
+                "ENUM_CLINIT_CODEGEN",
+                "the difference is confined to the enum's static initialiser, and both versions"
+                        + " declare the same fields -- so the constants present are the same and"
+                        + " only the code that builds the constant table differs",
+                toRemove.stream().map(Divergence::signalId).distinct().toList()));
+    }
+
+    private static boolean isEnum(ClassModel model) {
+        return (model.access() & Opcodes.ACC_ENUM) != 0;
     }
 
     // ------------------------------------------------------------------------------------------

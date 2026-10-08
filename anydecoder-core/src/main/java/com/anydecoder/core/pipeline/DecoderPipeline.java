@@ -12,6 +12,7 @@ import com.anydecoder.core.gate.ClassModel;
 import com.anydecoder.core.gate.ClassModelReader;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.GateReport;
+import com.anydecoder.core.gate.HierarchyIndex;
 import com.anydecoder.core.ingest.ArtifactScanner;
 import com.anydecoder.core.ingest.ArtifactSet;
 import com.anydecoder.core.ingest.ClassArchiver;
@@ -40,7 +41,6 @@ import java.util.TreeMap;
 public final class DecoderPipeline {
 
     private final ToolCache tools;
-    private final ClassGate gate = new ClassGate();
 
     public DecoderPipeline(ToolCache tools) {
         this.tools = tools;
@@ -71,7 +71,7 @@ public final class DecoderPipeline {
                 countSources(primary) - rebuild.excluded().size(), rebuild.excluded().size(),
                 rebuild.rounds());
 
-        GateReport report = runGate(artifacts.projectClasses(), compile.outputDirectory(), log);
+        GateReport report = runGate(artifacts, compile.outputDirectory(), log);
 
         return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(), report,
                 compile.outputDirectory(), normalizationCounts);
@@ -84,26 +84,13 @@ public final class DecoderPipeline {
             return scanned;
         }
         List<Path> jars = new ArrayList<>(scanned.dependencyJars());
-        for (Path entry : extra) {
-            List<Path> found = Files.isDirectory(entry)
-                    ? jarsUnder(entry)
-                    : List.of(entry);
-            for (Path jar : found) {
-                if (!jars.contains(jar)) {
-                    jars.add(jar);
-                }
+        for (Path jar : ArtifactScanner.expandDependencies(extra)) {
+            if (!jars.contains(jar)) {
+                jars.add(jar);
             }
         }
         jars.sort(Comparator.comparing(Path::toString));
         return new ArtifactSet(scanned.projectClasses(), jars, scanned.layout());
-    }
-
-    private static List<Path> jarsUnder(Path directory) throws IOException {
-        try (var stream = Files.list(directory)) {
-            return stream.filter(p -> p.toString().toLowerCase().endsWith(".jar"))
-                    .sorted()
-                    .toList();
-        }
     }
 
     private Map<String, Path> decompileAll(PipelineOptions options, ArtifactSet artifacts,
@@ -143,11 +130,20 @@ public final class DecoderPipeline {
                 classpath, release, log::println);
     }
 
-    private GateReport runGate(Path originalClasses, Path rebuiltClasses, PrintStream log)
+    private GateReport runGate(ArtifactSet artifacts, Path rebuiltClasses, PrintStream log)
             throws IOException {
+        Path originalClasses = artifacts.projectClasses();
+
+        // The hierarchy index needs the same classpath the rebuild used: the dependencies, plus
+        // the originals, so that a receiver narrowed from an interface to its implementation is
+        // recognised as the same member rather than a different call.
+        List<Path> hierarchyClasspath = new ArrayList<>(artifacts.dependencyJars());
+        hierarchyClasspath.add(originalClasses);
+        ClassGate gate = new ClassGate(new HierarchyIndex(hierarchyClasspath));
+
         List<Path> originals = classFiles(originalClasses);
         List<ClassVerdict> verdicts = originals.parallelStream()
-                .map(original -> gateOne(originalClasses, rebuiltClasses, original))
+                .map(original -> gateOne(gate, originalClasses, rebuiltClasses, original))
                 .sorted(Comparator.comparing(ClassVerdict::className))
                 .toList();
         GateReport report = new GateReport(verdicts);
@@ -156,7 +152,8 @@ public final class DecoderPipeline {
         return report;
     }
 
-    private ClassVerdict gateOne(Path originalClasses, Path rebuiltClasses, Path original) {
+    private ClassVerdict gateOne(ClassGate gate, Path originalClasses, Path rebuiltClasses,
+                                 Path original) {
         String relative = originalClasses.relativize(original).toString();
         String className = relative.substring(0, relative.length() - ".class".length())
                 .replace('\\', '/');

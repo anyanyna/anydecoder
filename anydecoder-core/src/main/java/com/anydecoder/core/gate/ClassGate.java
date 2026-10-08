@@ -20,20 +20,43 @@ import java.util.Set;
  * <p>The gate answers a narrow, checkable question: <em>does the recompiled bytecode do the same
  * things as the original?</em> It deliberately does not answer "is this the source the author
  * wrote". Variable names, comments, formatting, whether a loop was written as {@code while} or
- * {@code for} -- none of that is recoverable and none of it is claimed. What is claimed is
- * behavioural equivalence, and only where the signals actually support it.
+ * {@code for} -- none of that is recoverable and none of it is claimed.
+ *
+ * <h2>The classpath is part of the comparison</h2>
+ *
+ * <p>Two of the signals need to know whether two types are in the same hierarchy, because a
+ * decompiler that declares {@code ArrayList} where the source said {@code List} has not changed
+ * which method is called -- only the type the call site names. Telling that apart from a call
+ * genuinely moved to another class requires looking at supertypes, so the gate takes an index
+ * built from the same classpath the rebuild used.
+ *
+ * <p>Without it, the two signals reported 1457 findings on source that had been verified
+ * faithful by nine days of manual bytecode examination.
  */
 public final class ClassGate {
 
-    private static final List<Signal> METHOD_SIGNALS = List.of(
-            new ExceptionTableSignal(),
-            new AthrowSignal(),
-            new InvocationSignal(),
-            new FieldAccessSignal(),
-            new ConstantSignal(),
-            new InstructionCountSignal(),
-            new StringBuilderSignal(),
-            new LocalVarSignal());
+    private final List<Signal> methodSignals;
+
+    public ClassGate(HierarchyIndex hierarchy) {
+        this.methodSignals = List.of(
+                new ExceptionTableSignal(),
+                new AthrowSignal(),
+                new InvocationSignal(hierarchy),
+                new FieldAccessSignal(hierarchy),
+                new ConstantSignal(),
+                new InstructionCountSignal(),
+                new StringBuilderSignal(),
+                new LocalVarSignal());
+    }
+
+    /**
+     * A gate with no hierarchy information. Receiver owners are then compared literally, which
+     * is stricter than it should be -- useful for tests that construct their own bytecode, wrong
+     * for a real rebuild.
+     */
+    public ClassGate() {
+        this(HierarchyIndex.empty());
+    }
 
     public ClassVerdict compare(ClassModel original, ClassModel rebuilt) {
         List<Divergence> divergences = new ArrayList<>();
@@ -46,13 +69,14 @@ public final class ClassGate {
                 continue;
             }
             List<Divergence> methodDivergences = new ArrayList<>();
-            for (Signal signal : METHOD_SIGNALS) {
+            for (Signal signal : methodSignals) {
                 signal.compare(method, counterpart).ifPresent(methodDivergences::add);
             }
             divergences.addAll(methodDivergences);
 
             BenignDivergenceClassifier.Result result =
-                    BenignDivergenceClassifier.classify(method, counterpart, methodDivergences);
+                    BenignDivergenceClassifier.classify(original, rebuilt, method, counterpart,
+                            methodDivergences);
             explanations.addAll(result.explanations());
             unexplained.addAll(result.unexplained());
         }
@@ -73,32 +97,43 @@ public final class ClassGate {
 
     private void collectMethodSetDifferences(ClassModel original, ClassModel rebuilt,
                                              List<Divergence> divergences) {
-        Set<String> originalKeys = new HashSet<>();
-        for (MethodModel m : original.methods()) {
-            originalKeys.add(m.key());
-        }
-        Set<String> rebuiltKeys = new HashSet<>();
-        for (MethodModel m : rebuilt.methods()) {
-            rebuiltKeys.add(m.key());
-        }
+        Set<String> originalKeys = declaredMethodKeys(original);
+        Set<String> rebuiltKeys = declaredMethodKeys(rebuilt);
 
         for (String key : originalKeys) {
-            if (!rebuiltKeys.contains(key) && !hasSyntheticAccessor(original, key)) {
+            if (!rebuiltKeys.contains(key)) {
                 divergences.add(Divergence.of("members", key, Severity.HARD,
                         "method is absent from the rebuild"));
             }
         }
         for (String key : rebuiltKeys) {
-            if (!originalKeys.contains(key) && !hasSyntheticAccessor(rebuilt, key)) {
+            if (!originalKeys.contains(key)) {
                 divergences.add(Divergence.of("members", key, Severity.HARD,
                         "method exists only in the rebuild"));
             }
         }
     }
 
-    private boolean hasSyntheticAccessor(ClassModel model, String key) {
-        int paren = key.indexOf('(');
-        return paren > 0 && ApiComparison.isSyntheticAccessor(key.substring(0, paren));
+    /**
+     * The methods a class declares that have a source-level counterpart.
+     *
+     * <p>Synthetic and bridge methods are excluded, because whether they exist is a property of
+     * the compiler rather than of the source. Two cases make this necessary. The Eclipse compiler
+     * names inner-class accessors {@code access$0} where javac writes {@code access$000}. And
+     * javac from JDK 15 on emits a private synthetic {@code $values()} for every enum, which
+     * javac 8 did not -- so rebuilding an enum compiled a decade earlier with a current JDK
+     * produces a method the original could not have had.
+     */
+    private static Set<String> declaredMethodKeys(ClassModel model) {
+        Set<String> keys = new HashSet<>();
+        for (MethodModel method : model.methods()) {
+            if ((method.access() & (org.objectweb.asm.Opcodes.ACC_SYNTHETIC
+                    | org.objectweb.asm.Opcodes.ACC_BRIDGE)) != 0) {
+                continue;
+            }
+            keys.add(method.key());
+        }
+        return keys;
     }
 
     private Verdict verdictOf(List<Divergence> divergences, List<Divergence> unexplained) {
@@ -112,12 +147,12 @@ public final class ClassGate {
         return hard ? Verdict.DAMAGED : Verdict.SUSPECT;
     }
 
-    /** Exposed so callers can report which signals a given build of the gate runs. */
-    public static List<String> signalIds() {
+    /** The signal identifiers this build runs, for a report to state what was compared. */
+    public List<String> signalIds() {
         List<String> ids = new ArrayList<>();
         ids.add("api");
         ids.add("members");
-        METHOD_SIGNALS.forEach(s -> ids.add(s.id()));
+        methodSignals.forEach(s -> ids.add(s.id()));
         return List.copyOf(ids);
     }
 }

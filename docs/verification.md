@@ -102,11 +102,22 @@ Calls to `String.valueOf` are **not** excluded. They are semantic, and `String.v
 binds to a different overload from `String.valueOf(Object)` — rewriting one into the other can
 silently change output.
 
-### `fields` — field accesses · hard
+### `fields` — field accesses · hard, with a caveat about counts
 
 Compares the resolved multiset of field reads and writes, with the opcode included so that
 `getfield` and `getstatic` are distinguishable. Turning an instance access into a static one
 compiles and changes which storage is touched.
+
+**A field touched on one side only is hard. The same field touched a different number of times is
+`SUSPECT`.** The distinction matters because of a specific compiler behaviour: for
+`this.x = cond ? a : b;` the Eclipse compiler duplicates the `putfield` into each arm of the
+conditional, while javac emits one after the branches join. The original therefore writes the
+field more times than the rebuild, to the same field, on mutually exclusive paths.
+
+That is benign — and proving it needs control-flow analysis, which the gate does not do. Reporting
+it as `SUSPECT` rather than excusing it on a heuristic is the consistent choice. This is the
+largest single category in the corpus results, and
+[`validation/RESULTS.md`](../validation/RESULTS.md) says so with the counts.
 
 ### `consts` — loaded constants · hard
 
@@ -134,6 +145,38 @@ It still earns its place as a review prompt: a local the original declared as `i
 
 Note that decompilers do not recover variable names — CFR emits `var1`, `var2`. Only the type
 column carries information about the original.
+
+## The classpath is part of the comparison
+
+Two signals — `invokes` and `fields` — name a member by its owner as well as its name, and the
+owner is exactly where a decompiler diverges from the source it came from.
+
+Where the source said `List<String> items = new ArrayList<>();`, recovered source says
+`ArrayList<String> items = new ArrayList<>();`, and the call that follows becomes
+`invokevirtual ArrayList.add` instead of `invokeinterface List.add`. Same member, same descriptor,
+receiver of a related type. And where an override returns a subtype —
+`CloseableHttpClient.execute` returning `CloseableHttpResponse`, `HttpClient.execute` returning
+`HttpResponse` — reaching the call through the concrete type names the override.
+
+Taking either literally is not a small error. Measured on source that nine days of manual bytecode
+examination had already verified as faithful:
+
+| Comparison | Findings |
+|---|---:|
+| owner compared literally | 1325 |
+| covariant return types also compared literally | +57 |
+
+So the gate is constructed with a **hierarchy index** built from the same classpath the rebuild
+used. When two owners differ, they are paired only if one is a subtype of the other; when two
+return types differ, likewise. Only entries with no related counterpart are reported.
+
+The index reads class headers only, never loads a class, and falls back to the platform class
+loader for JDK types — `ArrayList` narrowing to `List` is the most common case of all and both
+live there.
+
+**What this does not do.** A different name or parameter list is always a different method and is
+never paired. An owner with no related counterpart is reported. So a call moved to an unrelated
+class is still caught, which is the thing the tolerance could most easily have hidden.
 
 ## Telling artefacts from defects
 
