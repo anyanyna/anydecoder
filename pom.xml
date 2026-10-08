@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.anydecoder</groupId>
+  <artifactId>anydecoder-parent</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+
+  <name>anydecoder</name>
+  <description>AI-assisted Java decompilation that proves the recovered source behaves like the original bytecode.</description>
+  <url>https://github.com/anydecoder/anydecoder</url>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>anydecoder-core</module>
+    <module>anydecoder-cli</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- Decompiler versions are pinned: the behaviour of each engine is part of
+         what anydecoder validates against. Bumping one requires re-running the
+         corpus validation (see validation/README.md). -->
+    <cfr.version>0.152</cfr.version>
+    <vineflower.version>1.11.1</vineflower.version>
+    <procyon.version>0.6.0</procyon.version>
+
+    <asm.version>9.7.1</asm.version>
+    <picocli.version>4.7.6</picocli.version>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.ow2.asm</groupId>
+        <artifactId>asm</artifactId>
+        <version>${asm.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.ow2.asm</groupId>
+        <artifactId>asm-tree</artifactId>
+        <version>${asm.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.ow2.asm</groupId>
+        <artifactId>asm-util</artifactId>
+        <version>${asm.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>info.picocli</groupId>
+        <artifactId>picocli</artifactId>
+        <version>${picocli.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+          <configuration>
+            <!-- Force English diagnostics from the forked JVM. Tool output is parsed and
+                 reported in failure messages, and a machine-localised locale turns those
+                 messages into mojibake that no one can read. Set here rather than in the
+                 environment so the build behaves the same everywhere. -->
+            <argLine>-Duser.language=en -Duser.country=US</argLine>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>3.6.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.5.3</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

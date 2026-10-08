@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.anydecoder</groupId>
+    <artifactId>anydecoder-parent</artifactId>
+    <version>0.1.0</version>
+  </parent>
+
+  <artifactId>anydecoder-core</artifactId>
+  <name>anydecoder-core</name>
+  <description>Domain logic: ingest, decompile engines, source normalisation, compile, the bytecode gate, differential testing.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm-tree</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm-util</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- The three decompiler jars ship inside the artifact as resources, so a
+           built anydecoder is self-contained: ToolCache extracts them to
+           ~/.anydecoder/tools/ on first use instead of requiring the user to go
+           find cfr.jar by hand. They stay off the shaded classpath on purpose,
+           because each engine is launched as its own subprocess. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>bundle-decompilers</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/META-INF/anydecoder/tools</outputDirectory>
+              <stripVersion>false</stripVersion>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.benf</groupId>
+                  <artifactId>cfr</artifactId>
+                  <version>${cfr.version}</version>
+                </artifactItem>
+                <artifactItem>
+                  <groupId>org.vineflower</groupId>
+                  <artifactId>vineflower</artifactId>
+                  <version>${vineflower.version}</version>
+                </artifactItem>
+                <artifactItem>
+                  <groupId>org.bitbucket.mstrobel</groupId>
+                  <artifactId>procyon-compilertools</artifactId>
+                  <version>${procyon.version}</version>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,30 @@
+target/
+*.class
+
+# anydecoder working directories
+.anydecoder-work/
+anydecoder-out/
+
+# Scratch space. Session transcripts and corpus extracts have been landing here during
+# development; none of it belongs in the repository, and some of it is not ours to publish.
+_scratch/
+
+# Validation corpus is 199 MB of third-party class files. It is referenced by
+# path from validation/scripts, never vendored into the repository.
+validation/corpus/
+validation/out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

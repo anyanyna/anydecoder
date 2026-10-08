@@ -1,0 +1,14 @@
+# Normalise line endings in the repository to LF, whatever the contributor's platform.
+# Without this, a Windows checkout rewrites every file on the first commit and the diff noise
+# buries the change that was actually made.
+* text=auto eol=lf
+
+# Binary, and must never be line-ending converted.
+*.jar binary
+*.class binary
+*.png binary
+*.gif binary
+*.ico binary
+
+# Generated, so a diff carries no information.
+target/** linguist-generated
