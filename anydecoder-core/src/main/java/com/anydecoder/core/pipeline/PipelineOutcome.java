@@ -46,11 +46,11 @@ public record PipelineOutcome(
 
     /** Failures caused by an API the JDK no longer has, rather than by the source. */
     public List<SourceTreeCompiler.ExcludedSource> missingJdkApis() {
-        return unbuildableSources.stream().filter(SourceTreeCompiler.ExcludedSource::isMissingJdkApi).toList();
+        return unbuildableSources.stream().filter(SourceTreeCompiler.ExcludedSource::missingJdkApi).toList();
     }
 
     /** Failures that are about the source: the repair worklist. */
     public List<SourceTreeCompiler.ExcludedSource> sourceDefects() {
-        return unbuildableSources.stream().filter(e -> !e.isMissingJdkApi()).toList();
+        return unbuildableSources.stream().filter(e -> !e.missingJdkApi()).toList();
     }
 }

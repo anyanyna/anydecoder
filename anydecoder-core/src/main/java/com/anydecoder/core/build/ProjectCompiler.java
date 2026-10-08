@@ -99,9 +99,22 @@ public final class ProjectCompiler {
 
             boolean ok;
             try {
-                JavaCompiler.CompilationTask task = compiler.getTask(
-                        new PrintWriter(compilerOutput), files, collected, options, null, units);
-                ok = Boolean.TRUE.equals(task.call());
+                // javac builds its message text from the JVM's default locale, not from the
+                // locale handed to the file manager, so diagnostics come back in whatever
+                // language the machine is set to. That is not cosmetic: the messages are
+                // grepped, classified and quoted into reports, and a machine-localised string
+                // makes all three unreliable. The original toolchain hit exactly this, with an
+                // error counter that matched the Chinese word for "error" and therefore never
+                // fired under the English diagnostics the build forced.
+                Locale previousDefault = Locale.getDefault();
+                Locale.setDefault(Locale.ENGLISH);
+                try {
+                    JavaCompiler.CompilationTask task = compiler.getTask(
+                            new PrintWriter(compilerOutput), files, collected, options, null, units);
+                    ok = Boolean.TRUE.equals(task.call());
+                } finally {
+                    Locale.setDefault(previousDefault);
+                }
             } catch (RuntimeException e) {
                 // The compiler rejects bad options by throwing rather than reporting. That is a
                 // bug in how anydecoder invoked it, not a property of the source under test, so

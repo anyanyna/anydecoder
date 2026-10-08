@@ -64,25 +64,58 @@ public final class SourceTreeCompiler {
      * @param path   the file
      * @param reason the compiler's first complaint about it
      */
-    public record ExcludedSource(Path path, String reason) {
+    public record ExcludedSource(Path path, String reason, boolean missingJdkApi) {
 
         /**
-         * Whether the failure is the JDK's doing rather than the source's.
+         * An expected entry for a failure that is the JDK's doing.
          *
-         * <p>Source that calls {@code sun.misc.BASE64Encoder} cannot be rebuilt on a modern JDK
-         * at all: the class was removed in Java 9, and neither {@code --release 8} nor
-         * {@code -source 8} brings it back, because it is not part of that API. That is a
-         * property of the environment, not evidence of a bad decompilation, and reporting the
-         * two together would mislead a reader into repairing source that is fine.
+         * <p>Placeholder used by callers that need to construct one for comparison; the compiler
+         * decides the flag in practice.
          */
-        public boolean isMissingJdkApi() {
-            String lower = reason == null ? "" : reason.toLowerCase(java.util.Locale.ROOT);
-            return lower.contains("package sun.")
-                    || lower.contains("package com.sun.")
-                    || lower.contains("package jdk.")
-                    || lower.contains("package org.omg.")
-                    || lower.contains("package org.ietf.jgss");
+        public static ExcludedSource of(Path path, String reason) {
+            return new ExcludedSource(path, reason, false);
         }
+    }
+
+    /**
+     * Whether a failure is the JDK's doing rather than the source's.
+     *
+     * <p>Source that calls {@code sun.misc.BASE64Encoder} cannot be rebuilt on a modern JDK at
+     * all: the class was removed in Java 9, and neither {@code --release 8} nor {@code -source 8}
+     * brings it back, because it is not part of that API. That is a property of the environment,
+     * not evidence of a bad decompilation, and reporting the two together would mislead a reader
+     * into repairing source that is fine.
+     *
+     * <p>The test is on the file's own imports rather than on the compiler's message. Messages
+     * are localised and their wording changes between JDK releases; an import is neither.
+     */
+    private static boolean usesRemovedJdkApi(Path sourceFile) {
+        try {
+            String text = java.nio.file.Files.readString(sourceFile,
+                    java.nio.charset.StandardCharsets.UTF_8);
+            for (String line : text.lines().toList()) {
+                String trimmed = line.trim();
+                if (!trimmed.startsWith("import ")) {
+                    continue;
+                }
+                if (trimmed.endsWith(";")) {
+                    trimmed = trimmed.substring(0, trimmed.length() - 1);
+                }
+                String name = trimmed.substring("import ".length()).trim();
+                if (name.startsWith("static ")) {
+                    name = name.substring("static ".length()).trim();
+                }
+                if (name.startsWith("sun.") || name.startsWith("com.sun.")
+                        || name.startsWith("jdk.") || name.startsWith("org.omg.")
+                        || name.startsWith("org.ietf.jgss")) {
+                    return true;
+                }
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // An unreadable file is classified as a source defect, which is the safe direction:
+            // it reaches the repair list rather than being quietly excused.
+        }
+        return false;
     }
 
     /**
@@ -101,12 +134,12 @@ public final class SourceTreeCompiler {
         }
 
         public List<ExcludedSource> missingJdkApi() {
-            return excluded.stream().filter(ExcludedSource::isMissingJdkApi).toList();
+            return excluded.stream().filter(ExcludedSource::missingJdkApi).toList();
         }
 
         /** Failures that are about the source rather than about the JDK it was built against. */
         public List<ExcludedSource> sourceDefects() {
-            return excluded.stream().filter(e -> !e.isMissingJdkApi()).toList();
+            return excluded.stream().filter(e -> !e.missingJdkApi()).toList();
         }
     }
 
@@ -124,7 +157,7 @@ public final class SourceTreeCompiler {
                           String release, SourceFallback fallback, Consumer<String> progress)
             throws IOException {
         List<Path> remaining = new ArrayList<>(sources);
-        Map<Path, String> excluded = new LinkedHashMap<>();
+        Map<Path, ExcludedSource> excluded = new LinkedHashMap<>();
         Set<Path> alreadyTriedFallback = new LinkedHashSet<>();
         int substituted = 0;
         CompileOutcome outcome = null;
@@ -167,7 +200,8 @@ public final class SourceTreeCompiler {
                     progressed = true;
                     continue;
                 }
-                excluded.put(source, reason);
+                excluded.put(source, new ExcludedSource(source, reason,
+                        usesRemovedJdkApi(source)));
                 progressed = true;
             }
 
@@ -196,9 +230,8 @@ public final class SourceTreeCompiler {
         return firstError;
     }
 
-    private static List<ExcludedSource> toExcluded(Map<Path, String> excluded) {
-        List<ExcludedSource> result = new ArrayList<>();
-        excluded.forEach((path, reason) -> result.add(new ExcludedSource(path, reason)));
+    private static List<ExcludedSource> toExcluded(Map<Path, ExcludedSource> excluded) {
+        List<ExcludedSource> result = new ArrayList<>(excluded.values());
         result.sort(java.util.Comparator.comparing(e -> e.path().toString()));
         return List.copyOf(result);
     }
