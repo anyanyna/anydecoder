@@ -115,6 +115,23 @@ not authoritative and should not be copied.
 
 ---
 
+### A source edit that the original does not have
+
+The mirror image of a decompiler defect, and harder to notice because the recovered source reads
+*better* than the original did.
+
+One recovered method wrapped a call in `try { ... } catch (Exception e) { Log.log(ERROR, "...", e); }`
+where the original had **no exception table at all** for that method. As recovered, a failure was
+logged and start-up continued in a partially initialised state; originally it propagated and
+aborted.
+
+Nothing in a comparison of call counts, field accesses or signatures can see this — the call is
+still made, once, to the same target. It shows up as an exception table the original does not
+have, which is the `excp` signal. It is worth checking any `catch` that logs and continues,
+because the recovered source may have invented it.
+
+---
+
 ## Things that look alarming and are fine
 
 ### `blockNN:` labels

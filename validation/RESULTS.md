@@ -130,6 +130,51 @@ so losing one on a base-class constructor leaves every subclass that declares it
 compile. A `throws` signal was added as a result, advisory because the clause cannot affect
 runtime behaviour, and the report now lists the classes affected.
 
+## 3. The repair loop, on files the peel could not use
+
+Three of the 56 files the rebuild set aside were handed to a repair agent, one per distinct kind
+of failure. All three were fixed, compiled, and came out `EQUIVALENT`.
+
+| File | What was wrong | The fix |
+|---|---|---|
+| `FormViewController` | the decompiler dropped a `checkcast java/lang/String`, leaving an `Object` argument that made `StringBuffer.append` ambiguous between `CharSequence` and `char[]` | restored the cast the original had at that call |
+| `FormDataDAO` | two faults: a dropped `Integer.valueOf` left `int == null`, and CFR had placed an `if (add)` block inside the inner loop, emitting a phantom return on the loop's exit path | restored the boxing; moved the block after the loop and removed the phantom return |
+| `ViewSetController` | CFR folded a hand-written `Iterator` loop with an explicit `checkcast Value` into an enhanced-for, so `Vector<IMember>`'s element type bound directly to a `Value` variable | restored the explicit iterator and cast |
+
+Each diagnosis came from the original bytecode — a `checkcast` present in the original and absent
+from the source, a boxing call present in the original, an `LocalVariableTable` entry for an
+iterator that an enhanced-for would not have produced — rather than from reading the source and
+guessing. The gate confirmed each one afterwards, which is the point: the model's confidence is
+not evidence, the rebuild is.
+
+The patterns are now in the repairer agent's table, since all three recur across a tree.
+
+## 4. Adjudication
+
+The two classes with the most signals firing at once were investigated in depth. One real defect,
+one false positive. Both write-ups live in the run's own output directory, which is not tracked --
+they are produced from a third party's compiled code and describe it. The real defect is set out
+in full below, since the reasoning is what generalises.
+
+The real defect — a `try`/`catch` in the recovered source that the original does not have, so
+failures are swallowed instead of aborting start-up — is the kind the hand verification that
+produced this tree could not have found, because it had no field or constant signal and compared
+call counts rather than targets.
+
+The false positive is a compiler-version difference: the original was built by an older javac
+whose try-with-resources encoding emits paired `Throwable`/`any` handlers and pre-initialised
+exception temporaries, which javac 17 does not produce at any target level. The agent established
+this by reproduction rather than inference: compiling the recovered structure at every target
+level reproduced the rebuild's exception table offset for offset, while neither javac 17 nor ecj
+3.44 produces the original's shape.
+
+That last point casts doubt on the project's own record that these originals came from the Eclipse
+compiler. The dual-handler try-with-resources encoding and the two-return boolean layout are javac
+8 signatures, and ecj 3.44 produces neither. The compiler's identity is therefore not settled,
+which does not change what the tolerances must accommodate — differences between whichever
+compiler built the original and whichever is doing the rebuild — but the `ECJ_*` category names
+should be read as inherited labels rather than a verified attribution.
+
 ## Reproducing
 
 Neither corpus nor compiled historical source is vendored here. Point the scripts at your own
