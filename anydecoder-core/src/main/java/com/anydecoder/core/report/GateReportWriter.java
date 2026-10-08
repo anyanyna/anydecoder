@@ -108,6 +108,8 @@ public final class GateReportWriter {
             sb.append('\n');
         }
 
+        appendThrowsAdvisory(sb, report);
+
         sb.append("## Build\n\n");
         CompileOutcome compile = outcome.compile();
         sb.append("- source files compiled: ").append(outcome.compiledSourceCount()).append('\n');
@@ -160,6 +162,40 @@ public final class GateReportWriter {
                 + " behaviour. Differential testing covers the second where it is enabled.\n");
 
         return sb.toString();
+    }
+
+    /**
+     * Classes that are faithful but lost a declared exception.
+     *
+     * <p>Separate from the review list because it is not a behavioural difference — the clause is
+     * compile-time only — and putting it there would train a reader to ignore the list. Separate
+     * from silence because it can leave recovered source unusable as a base class: a subclass may
+     * not declare a checked exception its superclass does not, so losing one on a base class
+     * constructor breaks every subclass that declares it.
+     */
+    private static void appendThrowsAdvisory(StringBuilder sb, GateReport report) {
+        List<ClassVerdict> affected = report.verdicts().stream()
+                .filter(v -> v.divergences().stream().anyMatch(d -> d.signalId().equals("throws")))
+                .toList();
+        if (affected.isEmpty()) {
+            return;
+        }
+        sb.append("## Declared exceptions the rebuild does not have\n\n");
+        sb.append("Not a behavioural difference: a `throws` clause is compile-time only and")
+                .append(" appears nowhere in the executed bytecode. Listed because it can still")
+                .append(" make the source unusable as a base class, since a subclass may not")
+                .append(" declare a checked exception its superclass does not.\n\n");
+        for (ClassVerdict verdict : affected.stream().limit(40).toList()) {
+            sb.append("- `").append(verdict.className().replace('/', '.')).append("`\n");
+            verdict.divergences().stream()
+                    .filter(d -> d.signalId().equals("throws"))
+                    .forEach(d -> sb.append("  - `").append(d.member()).append("`: ")
+                            .append(d.detail()).append('\n'));
+        }
+        if (affected.size() > 40) {
+            sb.append("- ... and ").append(affected.size() - 40).append(" more\n");
+        }
+        sb.append('\n');
     }
 
     private static final Map<String, String> CAUSE = Map.of(

@@ -125,6 +125,7 @@ Per method, compared against the original:
 | `consts` | a changed constant | hard |
 | `instrCount` | code silently dropped or invented | suspect |
 | `lvt` | a local declared with a wider or narrower type | advisory |
+| `throws` | a declared exception the rebuild lost | advisory |
 
 ¹ A field touched on one side only is hard; the same field touched a *different number of times*
 is `SUSPECT`, because a compiler may duplicate a store into each arm of a conditional. See

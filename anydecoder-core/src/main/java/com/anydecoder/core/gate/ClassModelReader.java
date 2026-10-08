@@ -133,7 +133,12 @@ public final class ClassModelReader {
             }
         }
 
-        return new MethodModel(m.access, m.name, m.desc, m.signature, instructions, table, locals);
+        List<String> declaredExceptions = m.exceptions == null
+                ? List.of()
+                : List.copyOf(m.exceptions);
+
+        return new MethodModel(m.access, m.name, m.desc, m.signature, declaredExceptions,
+                instructions, table, locals);
     }
 
     private static int position(Map<LabelNode, Integer> positions, LabelNode label, int fallback) {

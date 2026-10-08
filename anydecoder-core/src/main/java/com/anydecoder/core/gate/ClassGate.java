@@ -8,6 +8,7 @@ import com.anydecoder.core.gate.signals.InstructionCountSignal;
 import com.anydecoder.core.gate.signals.InvocationSignal;
 import com.anydecoder.core.gate.signals.LocalVarSignal;
 import com.anydecoder.core.gate.signals.StringBuilderSignal;
+import com.anydecoder.core.gate.signals.ThrowsSignal;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -46,6 +47,7 @@ public final class ClassGate {
                 new ConstantSignal(),
                 new InstructionCountSignal(),
                 new StringBuilderSignal(),
+                new ThrowsSignal(),
                 new LocalVarSignal());
     }
 

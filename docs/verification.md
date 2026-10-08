@@ -135,6 +135,24 @@ five is the boolean-materialisation artefact above.
 Suspect rather than hard, because a large size change can be the compiler's own doing — an
 unfolded increment costs three extra instructions each. The report says which.
 
+### `throws` — declared exceptions · advisory
+
+Compares each method's `throws` clause. Advisory, because the clause is compile-time only and
+appears nowhere in the executed bytecode: it cannot change what the code does.
+
+It is here because nothing else can see it. A `throws` clause is not part of a method descriptor —
+`void f()` and `void f() throws IOException` share one — so a decompiler that omits a constructor,
+or omits the exceptions one declares, produces source that matches the original on every other
+signal. That happened on the validation corpus: CFR dropped an abstract class's constructor, javac
+synthesised a default one, and the two were indistinguishable until the declared exceptions were
+compared.
+
+The consequence is concrete. A subclass may not declare a checked exception its superclass does
+not, so losing one on a base-class constructor leaves every subclass that declares it unable to
+compile. The report lists the affected classes in their own section rather than mixing them into
+the review list, since a reader who finds advisory noise among real findings learns to ignore the
+list.
+
 ### `lvt` — declared locals · advisory
 
 Compares the name and type of declared local variables, ignoring slots. Advisory because a
