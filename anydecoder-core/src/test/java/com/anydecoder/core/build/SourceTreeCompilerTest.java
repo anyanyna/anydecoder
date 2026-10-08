@@ -52,7 +52,7 @@ class SourceTreeCompilerTest {
                 sources, work.resolve("classes"), List.of(), "17");
 
         assertTrue(result.succeeded(), "the peel should reach a compiling tree");
-        assertEquals(List.of(broken.toAbsolutePath().normalize()), result.excluded());
+        assertEquals(List.of(broken.toAbsolutePath().normalize()), excludedPaths(result));
         assertTrue(Files.exists(work.resolve("classes/sample/Good.class")),
                 "the surviving file must actually have been compiled");
     }
@@ -72,9 +72,10 @@ class SourceTreeCompilerTest {
                 sources, work.resolve("classes"), List.of(), "17");
 
         assertTrue(result.succeeded());
-        assertEquals(2, result.excluded().size());
-        assertTrue(result.excluded().contains(first.toAbsolutePath().normalize()));
-        assertTrue(result.excluded().contains(second.toAbsolutePath().normalize()));
+        List<Path> paths = excludedPaths(result);
+        assertEquals(2, paths.size());
+        assertTrue(paths.contains(first.toAbsolutePath().normalize()));
+        assertTrue(paths.contains(second.toAbsolutePath().normalize()));
     }
 
     @Test
@@ -98,7 +99,7 @@ class SourceTreeCompilerTest {
                 sources, work.resolve("classes"), List.of(originalClasses), "17");
 
         assertTrue(result.succeeded(), "the dependent file must not be dragged down with the broken one");
-        assertEquals(List.of(brokenHelper.toAbsolutePath().normalize()), result.excluded());
+        assertEquals(List.of(brokenHelper.toAbsolutePath().normalize()), excludedPaths(result));
         assertTrue(Files.exists(work.resolve("classes/sample/User.class")),
                 "User resolves Helper against the original class on the classpath");
     }
@@ -114,6 +115,98 @@ class SourceTreeCompilerTest {
 
         assertFalse(result.succeeded(), "an unusable release is not something peeling can fix");
         assertTrue(result.excluded().isEmpty(), "no source was at fault");
+    }
+
+    @Test
+    @DisplayName("a second engine's rendering rescues a file the first could not structure")
+    void fallbackEngineRescuesAFile(@TempDir Path work) throws Exception {
+        Path primary = work.resolve("src-cfr");
+        Path alternative = work.resolve("src-vineflower");
+        Path broken = writeUnder(primary, "sample/Broken.java",
+                "package sample; public class Broken { this is not java }");
+        writeUnder(alternative, "sample/Broken.java",
+                "package sample; public class Broken { }");
+        writeUnder(primary, "sample/Fine.java", "package sample; public class Fine { }");
+
+        SourceTreeCompiler.Result result = new SourceTreeCompiler().compile(
+                List.of(broken, primary.resolve("sample/Fine.java")), primary,
+                work.resolve("classes"), List.of(), "17",
+                new OtherEngineFallback(List.of(alternative)), null);
+
+        assertTrue(result.succeeded());
+        assertEquals(1, result.substituted(), "the broken file should have been replaced, not dropped");
+        assertTrue(result.excluded().isEmpty(),
+                "nothing should have been set aside once a working rendering was available");
+        assertTrue(Files.exists(work.resolve("classes/sample/Broken.class")),
+                "the substituted file must actually have been compiled");
+    }
+
+    @Test
+    @DisplayName("a file the fallback also cannot compile is set aside, not retried forever")
+    void fallbackThatAlsoFailsIsSetAside(@TempDir Path work) throws Exception {
+        Path primary = work.resolve("src-cfr");
+        Path alternative = work.resolve("src-vineflower");
+        Path broken = writeUnder(primary, "sample/Broken.java",
+                "package sample; public class Broken { ??? }");
+        // Both engines failed on this file, which is what the fallback has to cope with.
+        writeUnder(alternative, "sample/Broken.java",
+                "package sample; public class Broken { !!! }");
+        writeUnder(primary, "sample/Fine.java", "package sample; public class Fine { }");
+
+        SourceTreeCompiler.Result result = new SourceTreeCompiler().compile(
+                List.of(broken, primary.resolve("sample/Fine.java")), primary,
+                work.resolve("classes"), List.of(), "17",
+                new OtherEngineFallback(List.of(alternative)), null);
+
+        assertTrue(result.succeeded());
+        assertEquals(List.of(broken.toAbsolutePath().normalize()), excludedPaths(result));
+        assertTrue(result.substituted() <= 1, "the fallback must be tried once per file");
+    }
+
+    @Test
+    @DisplayName("an API the JDK removed is not reported as a source defect")
+    void missingJdkApiIsClassifiedSeparately(@TempDir Path work) throws Exception {
+        Path broken = write(work, "sample/UsesRemovedApi.java",
+                "package sample;\nimport sun.misc.BASE64Encoder;\n"
+                        + "public class UsesRemovedApi { BASE64Encoder e; }");
+
+        SourceTreeCompiler.Result result = new SourceTreeCompiler().compile(
+                List.of(broken), work.resolve("classes"), List.of(), "17");
+
+        assertTrue(result.succeeded());
+        assertEquals(1, result.excluded().size());
+        assertEquals(1, result.missingJdkApi().size(),
+                "BASE64Encoder was removed in Java 9; no --release brings it back, so this is"
+                        + " the environment rather than the source");
+        assertTrue(result.sourceDefects().isEmpty(),
+                "sending a reader to repair this source would waste their time");
+    }
+
+    @Test
+    @DisplayName("a genuine syntax error is reported as a source defect")
+    void syntaxErrorIsASourceDefect(@TempDir Path work) throws Exception {
+        Path broken = write(work, "sample/Broken.java",
+                "package sample; public class Broken { this is not java }");
+
+        SourceTreeCompiler.Result result = new SourceTreeCompiler().compile(
+                List.of(broken), work.resolve("classes"), List.of(), "17");
+
+        assertEquals(1, result.sourceDefects().size());
+        assertTrue(result.missingJdkApi().isEmpty());
+    }
+
+    private static Path writeUnder(Path root, String relative, String source) throws Exception {
+        Path file = root.resolve(relative);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, source, StandardCharsets.UTF_8);
+        return file;
+    }
+
+    /** The paths of the sources the rebuild set aside, sorted by the compiler. */
+    private static List<Path> excludedPaths(SourceTreeCompiler.Result result) {
+        return result.excluded().stream()
+                .map(SourceTreeCompiler.ExcludedSource::path)
+                .toList();
     }
 
     // ------------------------------------------------------------------------------------------

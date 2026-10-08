@@ -1,6 +1,7 @@
 package com.anydecoder.core.report;
 
 import com.anydecoder.core.build.CompileOutcome;
+import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.gate.BenignDivergenceClassifier;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
@@ -114,19 +115,20 @@ public final class GateReportWriter {
         }
         sb.append('\n');
 
-        if (!outcome.unbuildableSources().isEmpty()) {
-            sb.append("### Sources that would not compile\n\n");
-            sb.append("Removed from the rebuild so that the rest could be checked. Their classes"
-                    + " are absent, so the gate did not reach them and they are **not** passes."
-                    + " This is the repair worklist.\n\n");
-            outcome.unbuildableSources().stream().limit(60).forEach(p ->
-                    sb.append("- `").append(relativeTo(outcome.primarySource(), p)).append("`\n"));
-            if (outcome.unbuildableSources().size() > 60) {
-                sb.append("- ... and ").append(outcome.unbuildableSources().size() - 60)
+        if (!outcome.substitutedSources().isEmpty()) {
+            sb.append("### Files rescued by a second engine\n\n");
+            sb.append("The primary engine's rendering would not compile; another engine's was"
+                    + " substituted and then compiled and gated like anything else.\n\n");
+            outcome.substitutedSources().stream().limit(30).forEach(s ->
+                    sb.append("- `").append(s).append("`\n"));
+            if (outcome.substitutedSources().size() > 30) {
+                sb.append("- ... and ").append(outcome.substitutedSources().size() - 30)
                         .append(" more\n");
             }
             sb.append('\n');
         }
+
+        appendUnbuildable(sb, outcome);
 
         if (!outcome.normalization().isEmpty()) {
             sb.append("## Cleanup passes\n\n");
@@ -149,6 +151,52 @@ public final class GateReportWriter {
                 + " behaviour. Differential testing covers the second where it is enabled.\n");
 
         return sb.toString();
+    }
+
+    /**
+     * Files the rebuild could not use, split by cause.
+     *
+     * <p>The split matters more than the list. A file that calls {@code sun.misc.BASE64Encoder}
+     * cannot be rebuilt on a modern JDK at all — the class was removed in Java 9 and no
+     * {@code --release} brings it back — and presenting that next to a decompiler's structure
+     * collapse would send a reader to repair source that is fine.
+     */
+    private static void appendUnbuildable(StringBuilder sb, PipelineOutcome outcome) {
+        List<SourceTreeCompiler.ExcludedSource> sourceDefects = outcome.sourceDefects();
+        List<SourceTreeCompiler.ExcludedSource> jdkApis = outcome.missingJdkApis();
+
+        if (!sourceDefects.isEmpty()) {
+            sb.append("### Sources that would not compile\n\n");
+            sb.append("Set aside so that the rest could be checked. Their classes are absent, so"
+                    + " the gate did not reach them and they are **not** passes. This is the"
+                    + " repair worklist.\n\n");
+            sourceDefects.stream().limit(60).forEach(e ->
+                    sb.append("- `").append(relativeTo(outcome.primarySource(), e.path()))
+                            .append("` — ").append(oneLine(e.reason())).append('\n'));
+            if (sourceDefects.size() > 60) {
+                sb.append("- ... and ").append(sourceDefects.size() - 60).append(" more\n");
+            }
+            sb.append('\n');
+        }
+
+        if (!jdkApis.isEmpty()) {
+            sb.append("### Not rebuildable on this JDK, not a decompilation defect\n\n");
+            sb.append("These use an API the JDK no longer ships, so they cannot be recompiled"
+                    + " here and the gate could not reach them. Nothing is claimed about their"
+                    + " fidelity either way.\n\n");
+            jdkApis.forEach(e ->
+                    sb.append("- `").append(relativeTo(outcome.primarySource(), e.path()))
+                            .append("` — ").append(oneLine(e.reason())).append('\n'));
+            sb.append('\n');
+        }
+    }
+
+    private static String oneLine(String text) {
+        if (text == null) {
+            return "(no message)";
+        }
+        String collapsed = text.replaceAll("\\s+", " ").trim();
+        return collapsed.length() > 120 ? collapsed.substring(0, 117) + "..." : collapsed;
     }
 
     public static String toJson(PipelineOutcome outcome) {
@@ -206,14 +254,24 @@ public final class GateReportWriter {
         Map<String, Object> build = new LinkedHashMap<>();
         build.put("compilerErrors", outcome.compile().errorCount());
         build.put("sourcesCompiled", outcome.compiledSourceCount());
-        build.put("sourcesRemovedAsUncompilable", outcome.unbuildableSources().size());
+        build.put("sourcesSetAside", outcome.unbuildableSources().size());
+        build.put("sourcesSubstitutedFromAnotherEngine", outcome.substitutedSources().size());
         root.put("build", build);
 
-        // The repair worklist: files whose classes never reached the gate because they do not
-        // compile. Separated from needsReview so a caller can dispatch a fixer at these without
-        // mixing them up with classes that were compared and differed.
-        root.put("uncompilable", outcome.unbuildableSources().stream()
-                .map(p -> relativeTo(outcome.primarySource(), p))
+        root.put("substituted", outcome.substitutedSources());
+
+        // Two separate worklists, because they call for different work. A source defect needs
+        // repairing; an API the JDK removed needs a different JDK or a decision, and no amount
+        // of editing the decompiled source will help.
+        root.put("uncompilableSource", outcome.sourceDefects().stream()
+                .map(e -> Map.of(
+                        "path", relativeTo(outcome.primarySource(), e.path()),
+                        "reason", e.reason() == null ? "" : e.reason()))
+                .toList());
+        root.put("notRebuildableOnThisJdk", outcome.missingJdkApis().stream()
+                .map(e -> Map.of(
+                        "path", relativeTo(outcome.primarySource(), e.path()),
+                        "reason", e.reason() == null ? "" : e.reason()))
                 .toList());
 
         root.put("cleanupPasses", new LinkedHashMap<String, Object>(outcome.normalization()));

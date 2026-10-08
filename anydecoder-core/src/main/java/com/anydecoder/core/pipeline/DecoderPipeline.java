@@ -1,6 +1,8 @@
 package com.anydecoder.core.pipeline;
 
 import com.anydecoder.core.build.CompileOutcome;
+import com.anydecoder.core.build.OtherEngineFallback;
+import com.anydecoder.core.build.SourceFallback;
 import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.engine.CfrDecompiler;
 import com.anydecoder.core.engine.Decompiler;
@@ -65,16 +67,36 @@ public final class DecoderPipeline {
                     .applyTo(primary, log).filesPerPass();
         }
 
-        SourceTreeCompiler.Result rebuild = rebuild(options, artifacts, primary, log);
+        OtherEngineFallback fallback = fallbackFrom(trees, primary);
+        SourceTreeCompiler.Result rebuild = rebuild(options, artifacts, primary, fallback, log);
         CompileOutcome compile = rebuild.compile();
-        log.printf("[build] %d source file(s) compiled, %d removed as uncompilable, %d round(s)%n",
-                countSources(primary) - rebuild.excluded().size(), rebuild.excluded().size(),
-                rebuild.rounds());
+        log.printf("[build] %d compiled, %d substituted from another engine, %d set aside,"
+                        + " %d round(s)%n",
+                countSources(primary) - rebuild.excluded().size(), rebuild.substituted(),
+                rebuild.excluded().size(), rebuild.rounds());
+        if (!fallback.substitutions().isEmpty()) {
+            log.printf("[build] substituted %d file(s) %s%n",
+                    fallback.substitutions().size(), fallback.describe());
+        }
 
         GateReport report = runGate(artifacts, compile.outputDirectory(), log);
 
-        return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(), report,
-                compile.outputDirectory(), normalizationCounts);
+        return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(),
+                fallback.substitutions(), report, compile.outputDirectory(), normalizationCounts);
+    }
+
+    /**
+     * The other engines' trees, to be consulted for any file the primary engine's source cannot
+     * compile. Ordered so the second engine is tried before the third.
+     */
+    private static OtherEngineFallback fallbackFrom(Map<String, Path> trees, Path primary) {
+        List<Path> alternatives = new ArrayList<>();
+        for (Path tree : trees.values()) {
+            if (!tree.equals(primary)) {
+                alternatives.add(tree);
+            }
+        }
+        return new OtherEngineFallback(alternatives);
     }
 
     /** Add jars the caller named to whatever discovery already found, without duplicates. */
@@ -113,7 +135,8 @@ public final class DecoderPipeline {
     }
 
     private SourceTreeCompiler.Result rebuild(PipelineOptions options, ArtifactSet artifacts,
-                                              Path primarySource, PrintStream log) throws IOException {
+                                              Path primarySource, SourceFallback fallback,
+                                              PrintStream log) throws IOException {
         List<Path> sources = javaFiles(primarySource);
         List<Path> classpath = new ArrayList<>(artifacts.dependencyJars());
         // The original classes go on the classpath so that any type the decompiler could not
@@ -126,8 +149,8 @@ public final class DecoderPipeline {
         String release = dominantRelease(artifacts.projectClasses());
         log.printf("[build] compiling %d source file(s) at release %s%n", sources.size(), release);
 
-        return new SourceTreeCompiler().compile(sources, options.workDir().resolve("classes"),
-                classpath, release, log::println);
+        return new SourceTreeCompiler().compile(sources, primarySource,
+                options.workDir().resolve("classes"), classpath, release, fallback, log::println);
     }
 
     private GateReport runGate(ArtifactSet artifacts, Path rebuiltClasses, PrintStream log)
