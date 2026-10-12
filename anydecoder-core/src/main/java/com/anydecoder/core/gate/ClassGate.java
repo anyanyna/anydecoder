@@ -135,6 +135,11 @@ public final class ClassGate {
                     | org.objectweb.asm.Opcodes.ACC_BRIDGE)) != 0) {
                 continue;
             }
+            // Also by name: the flag is not set on every accessor a compiler generates, and a
+            // filter that trusts the flag alone reports the accessor as a missing member.
+            if (ApiComparison.isSyntheticAccessor(method.name())) {
+                continue;
+            }
             keys.add(method.key());
         }
         return keys;

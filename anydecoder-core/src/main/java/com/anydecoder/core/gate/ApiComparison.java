@@ -84,7 +84,7 @@ public final class ApiComparison {
                     + Integer.toHexString(f.access() & ~FIELD_MASK));
         }
         for (MethodModel m : model.methods()) {
-            if ((m.access() & METHOD_MASK) != 0) {
+            if ((m.access() & METHOD_MASK) != 0 || isSyntheticAccessor(m.name())) {
                 continue;
             }
             out.add("method " + m.name() + m.descriptor() + " flags=0x"
@@ -117,7 +117,16 @@ public final class ApiComparison {
         return sb.toString();
     }
 
-    /** True for the compiler-generated inner-class accessors whose names differ per compiler. */
+    /**
+     * True for the compiler-generated inner-class accessors whose names differ per compiler.
+     *
+     * <p>Matched by <b>name</b>, not only by the {@code ACC_SYNTHETIC} flag. javac does not always
+     * set that flag on them: a real class in the validation corpus has {@code access$302} in the
+     * rebuild carrying only {@code ACC_STATIC}, so a flag-based filter kept it and reported it as
+     * a method the original does not have — when the original's equivalent was filtered out
+     * because <em>its</em> compiler did set the flag. The asymmetry, not the accessor, was the
+     * finding.
+     */
     public static boolean isSyntheticAccessor(String methodName) {
         return methodName.startsWith("access$") && methodName.length() > 7
                 && methodName.substring(7).chars().allMatch(Character::isDigit);
