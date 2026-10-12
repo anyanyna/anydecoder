@@ -149,6 +149,38 @@ not evidence, the rebuild is.
 
 The patterns are now in the repairer agent's table, since all three recur across a tree.
 
+## 3b. Adjudicating every damaged class
+
+Every class the gate reported `DAMAGED` was investigated individually against the original
+bytecode, by six agents working in parallel, one class at a time, with the requirement that an
+artefact verdict name the mechanism and show it present.
+
+**47 of 54 classes adjudicated. Five are real defects.**
+
+| Class | What is wrong |
+|---|---|
+| `ApplicationBO.initApp` | a `try`/`catch` the original does not have; failures are swallowed and start-up continues half-initialised |
+| `MainController.initUserMenu` | an added `&& className.contains(".")` |
+| `MainController$FileLogOffListener.onEvent` | an added SSO branch that redirects and returns |
+| `DraftModelBuilder.alignToModel` | `ArrayList.remove(int)` became `remove(Object)` — by index became by value |
+| `CommandDefineViewModel.toExcel` | `"2007".equals(version)` became `version.equals(version)`, a tautology |
+
+Two of the five are in `MainController.java`'s authentication paths, which is where the original
+hand verification was thinnest.
+
+**What this says about the tool.** Four of the five are invisible to anything that compares call
+counts, field accesses or signatures — a handler added around an existing call, a constant
+replaced by a variable, an overload resolved differently. They are the same family as the six
+defects the original recovery found, and they were found the same way: by comparing structure
+rather than reading.
+
+**What it says about the report.** Every one of the remaining 42 adjudicated classes was a
+compiler difference, and they reduce to about nine mechanisms — receiver narrowing, an implicit
+null check in two encodings, boxing materialisation, a store duplicated into each conditional arm,
+synthetic accessor renumbering, adjacent string folding, an elided checkcast, increment folding,
+loop rotation. That is the reason the review list is worth grouping by cause rather than listing
+alphabetically: nine explanations cover forty-two entries.
+
 ## 4. Adjudication
 
 The two classes with the most signals firing at once were investigated in depth. One real defect,
