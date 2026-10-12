@@ -7,6 +7,7 @@ import com.anydecoder.core.gate.signals.FieldAccessSignal;
 import com.anydecoder.core.gate.signals.InstructionCountSignal;
 import com.anydecoder.core.gate.signals.InvocationSignal;
 import com.anydecoder.core.gate.signals.LocalVarSignal;
+import com.anydecoder.core.gate.signals.SmallConstantSignal;
 import com.anydecoder.core.gate.signals.StringBuilderSignal;
 import com.anydecoder.core.gate.signals.ThrowsSignal;
 
@@ -45,6 +46,7 @@ public final class ClassGate {
                 new InvocationSignal(hierarchy),
                 new FieldAccessSignal(hierarchy),
                 new ConstantSignal(),
+                new SmallConstantSignal(),
                 new InstructionCountSignal(),
                 new StringBuilderSignal(),
                 new ThrowsSignal(),

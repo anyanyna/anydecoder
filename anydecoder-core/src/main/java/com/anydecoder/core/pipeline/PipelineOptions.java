@@ -11,6 +11,8 @@ import java.util.List;
  * @param outputDir where the report and the recovered source are written
  * @param engines   engine ids to run, in order; the first is the primary source tree
  * @param enableNormalization whether to run the source cleanup passes
+ * @param tryAlternativeEngines after gating, offer each class the gate was unhappy with to the
+ *                  other engines and keep a swap only when the verdict improves
  * @param dependencyJars extra jars to put on the compile classpath and offer to the engines.
  *                  Discovery finds jars sitting in a {@code lib/} beside the classes, which
  *                  covers an exploded web application; a project that keeps its jars
@@ -24,6 +26,7 @@ public record PipelineOptions(
         Path outputDir,
         List<String> engines,
         boolean enableNormalization,
+        boolean tryAlternativeEngines,
         List<Path> dependencyJars) {
 
     public PipelineOptions {
@@ -32,19 +35,21 @@ public record PipelineOptions(
 
     public static PipelineOptions defaults(Path input, Path workDir, Path outputDir) {
         return new PipelineOptions(input, workDir, outputDir,
-                List.of("cfr", "vineflower"), true, List.of());
+                List.of("cfr", "vineflower"), true, true, List.of());
     }
 
     public PipelineOptions withEngines(String... engineIds) {
         return new PipelineOptions(input, workDir, outputDir, List.of(engineIds),
-                enableNormalization, dependencyJars);
+                enableNormalization, tryAlternativeEngines, dependencyJars);
     }
 
     public PipelineOptions withNormalization(boolean enabled) {
-        return new PipelineOptions(input, workDir, outputDir, engines, enabled, dependencyJars);
+        return new PipelineOptions(input, workDir, outputDir, engines, enabled,
+                tryAlternativeEngines, dependencyJars);
     }
 
     public PipelineOptions withDependencies(List<Path> jars) {
-        return new PipelineOptions(input, workDir, outputDir, engines, enableNormalization, jars);
+        return new PipelineOptions(input, workDir, outputDir, engines, enableNormalization,
+                tryAlternativeEngines, jars);
     }
 }

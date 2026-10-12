@@ -2,6 +2,7 @@ package com.anydecoder.core.pipeline;
 
 import com.anydecoder.core.build.CompileOutcome;
 import com.anydecoder.core.build.OtherEngineFallback;
+import com.anydecoder.core.build.ProjectCompiler;
 import com.anydecoder.core.build.SourceFallback;
 import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.engine.CfrDecompiler;
@@ -80,9 +81,59 @@ public final class DecoderPipeline {
         }
 
         GateReport report = runGate(artifacts, compile.outputDirectory(), log);
+        List<EngineSubstitution.Attempt> substitutions = List.of();
+
+        if (options.tryAlternativeEngines() && trees.size() > 1) {
+            substitutions = substituteFromOtherEngines(options, artifacts, primary, trees,
+                    report.needingReview(), log);
+            if (substitutions.stream().anyMatch(EngineSubstitution.Attempt::kept)) {
+                // Verdicts changed, so re-gate the whole tree. Reporting a mixture of verdicts
+                // from before and after a repair would be worse than the few minutes it costs.
+                report = runGate(artifacts, compile.outputDirectory(), log);
+            }
+        }
 
         return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(),
-                fallback.substitutions(), report, compile.outputDirectory(), normalizationCounts);
+                fallback.substitutions(), substitutions, report, compile.outputDirectory(),
+                normalizationCounts);
+    }
+
+    /**
+     * Hand each class the gate was unhappy with to the other engines, keeping a swap only when the
+     * verdict actually improves.
+     */
+    private List<EngineSubstitution.Attempt> substituteFromOtherEngines(
+            PipelineOptions options, ArtifactSet artifacts, Path primary, Map<String, Path> trees,
+            List<ClassVerdict> needingReview, PrintStream log) throws IOException {
+
+        Path classesDir = options.workDir().resolve("classes");
+        List<Path> classpath = new ArrayList<>(artifacts.dependencyJars());
+        classpath.add(artifacts.projectClasses());
+        List<Path> alternatives = new ArrayList<>();
+        for (Map.Entry<String, Path> entry : trees.entrySet()) {
+            if (!entry.getValue().equals(primary)) {
+                alternatives.add(entry.getValue());
+            }
+        }
+        ClassGate gate = gateFor(artifacts);
+        EngineSubstitution substitution = new EngineSubstitution(gate, new ProjectCompiler(),
+                artifacts.projectClasses(), classesDir, classpath,
+                dominantRelease(artifacts.projectClasses()));
+
+        log.printf("[substitute] trying %d engine(s) on %d class(es) the gate was unhappy with%n",
+                alternatives.size(), needingReview.size());
+        List<EngineSubstitution.Attempt> attempts =
+                substitution.tryImprove(primary, alternatives, needingReview, log);
+        long kept = attempts.stream().filter(EngineSubstitution.Attempt::kept).count();
+        log.printf("[substitute] %d of %d improved%n", kept, attempts.size());
+        return attempts;
+    }
+
+    /** A gate with its hierarchy index built from the same classpath the rebuild used. */
+    private ClassGate gateFor(ArtifactSet artifacts) {
+        List<Path> hierarchyClasspath = new ArrayList<>(artifacts.dependencyJars());
+        hierarchyClasspath.add(artifacts.projectClasses());
+        return new ClassGate(new HierarchyIndex(hierarchyClasspath));
     }
 
     /**
@@ -160,9 +211,7 @@ public final class DecoderPipeline {
         // The hierarchy index needs the same classpath the rebuild used: the dependencies, plus
         // the originals, so that a receiver narrowed from an interface to its implementation is
         // recognised as the same member rather than a different call.
-        List<Path> hierarchyClasspath = new ArrayList<>(artifacts.dependencyJars());
-        hierarchyClasspath.add(originalClasses);
-        ClassGate gate = new ClassGate(new HierarchyIndex(hierarchyClasspath));
+        ClassGate gate = gateFor(artifacts);
 
         List<Path> originals = classFiles(originalClasses);
         List<ClassVerdict> verdicts = originals.parallelStream()

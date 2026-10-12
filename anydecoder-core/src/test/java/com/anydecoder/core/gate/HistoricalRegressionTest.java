@@ -7,6 +7,8 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -181,18 +183,28 @@ class HistoricalRegressionTest {
         });
     }
 
-    private static byte[] membersInOrder(String name, String first, String second) {
+    /**
+     * The same two members declared in the given order.
+     *
+     * <p>The body is bound to the method's <em>name</em>, not to its position. An earlier version
+     * of this helper passed the order straight through to both the field declarations and the
+     * method bodies, so "reordering" also swapped which method returned 1 and which returned 2 --
+     * a real difference that the gate could not see at the time, because a small integer constant
+     * lives in the opcode and nothing compared those. Fixing that signal is what made this
+     * helper's mistake visible.
+     */
+    private static byte[] membersInOrder(String name, String firstDeclared, String secondDeclared) {
         return TestBytecode.clazz(name, (ClassWriter cw) -> {
-            cw.visitField(Opcodes.ACC_PRIVATE, first, "I", null, null).visitEnd();
-            cw.visitField(Opcodes.ACC_PRIVATE, second, "I", null, null).visitEnd();
-            TestBytecode.method(cw, first, "()I", mv -> {
-                mv.visitInsn(Opcodes.ICONST_1);
-                mv.visitInsn(Opcodes.IRETURN);
-            });
-            TestBytecode.method(cw, second, "()I", mv -> {
-                mv.visitInsn(Opcodes.ICONST_2);
-                mv.visitInsn(Opcodes.IRETURN);
-            });
+            for (String member : List.of(firstDeclared, secondDeclared)) {
+                cw.visitField(Opcodes.ACC_PRIVATE, member, "I", null, null).visitEnd();
+            }
+            for (String member : List.of(firstDeclared, secondDeclared)) {
+                int value = member.equals("first") ? 1 : 2;
+                TestBytecode.method(cw, member, "()I", mv -> {
+                    mv.visitInsn(value == 1 ? Opcodes.ICONST_1 : Opcodes.ICONST_2);
+                    mv.visitInsn(Opcodes.IRETURN);
+                });
+            }
         });
     }
 }

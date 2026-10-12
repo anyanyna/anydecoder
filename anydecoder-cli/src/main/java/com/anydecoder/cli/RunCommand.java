@@ -50,6 +50,10 @@ public final class RunCommand implements Callable<Integer> {
             description = "Skip the source cleanup passes.")
     private boolean noNormalize;
 
+    @CommandLine.Option(names = {"--no-substitute"},
+            description = "Do not offer classes the gate was unhappy with to the other engines.")
+    private boolean noSubstitute;
+
     @CommandLine.Option(names = {"--format"},
             description = "Report format: markdown, json, or both. Default: both")
     private String format = "both";
@@ -74,6 +78,7 @@ public final class RunCommand implements Callable<Integer> {
                 resolvedOutput.toAbsolutePath(),
                 engines != null && !engines.isEmpty() ? engines : List.of("cfr", "vineflower"),
                 !noNormalize,
+                !noSubstitute,
                 dependencies == null ? List.of() : dependencies.stream()
                         .map(Path::toAbsolutePath).toList());
 

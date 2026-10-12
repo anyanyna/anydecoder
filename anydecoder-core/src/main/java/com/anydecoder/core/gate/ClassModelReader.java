@@ -155,12 +155,22 @@ public final class ClassModelReader {
         String mnemonic = Printer.OPCODES[opcode];
 
         if (node instanceof InsnNode) {
+            String constant = smallConstant(opcode);
+            if (constant != null) {
+                // The value of a small constant lives in the opcode itself, so `return 1` and
+                // `return 2` differ only in which of two instructions appears. Rendering the
+                // value as an operand is what lets one signal compare them at all: a comparison
+                // that only looks at instruction *kinds* sees the same instruction twice.
+                return new Insn(opcode, constantMnemonic(opcode), constant, false);
+            }
             return new Insn(opcode, mnemonic, "", OpcodeSafety.canThrow(opcode));
         }
         if (node instanceof IntInsnNode i) {
             if (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) {
-                // Which width a compiler picks for a small constant is its own business.
-                return new Insn(opcode, "push", Integer.toString(i.operand), false);
+                // Which width a compiler picks for a small constant is its own business, and so
+                // is whether it pushes the value or loads it from the pool; naming the value is
+                // what makes the two comparable.
+                return new Insn(opcode, "push", "int:" + i.operand, false);
             }
             if (opcode == Opcodes.NEWARRAY) {
                 return new Insn(opcode, mnemonic, arrayTypeName(i.operand), true);
@@ -221,6 +231,46 @@ public final class ClassModelReader {
             return new Insn(opcode, mnemonic, ma.desc + " x" + ma.dims, true);
         }
         return new Insn(opcode, mnemonic, "", OpcodeSafety.canThrow(opcode));
+    }
+
+    /**
+     * The value a constant-pushing opcode carries, or null if the opcode is not one.
+     *
+     * <p>These are the instructions whose value is encoded in the opcode itself —
+     * {@code iconst_2} is not "an iconst with a 2" in the class file, it is one of twelve
+     * distinct instructions. Comparing instructions by kind alone therefore cannot tell
+     * {@code return 1} from {@code return 2}, which is why the value is lifted into the operand.
+     */
+    static String smallConstant(int opcode) {
+        if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
+            return "int:" + (opcode - Opcodes.ICONST_0);
+        }
+        return switch (opcode) {
+            case Opcodes.LCONST_0 -> "long:0";
+            case Opcodes.LCONST_1 -> "long:1";
+            // Raw bit patterns, matching how ClassModelReader renders an ldc of the same value,
+            // so that a constant pushed by either route compares equal.
+            case Opcodes.FCONST_0 -> "float:0";
+            case Opcodes.FCONST_1 -> "float:" + Float.floatToRawIntBits(1.0f);
+            case Opcodes.FCONST_2 -> "float:" + Float.floatToRawIntBits(2.0f);
+            case Opcodes.DCONST_0 -> "double:0";
+            case Opcodes.DCONST_1 -> "double:" + Double.doubleToRawLongBits(1.0d);
+            case Opcodes.ACONST_NULL -> "null";
+            default -> null;
+        };
+    }
+
+    /** The family name, so one signal can collect every constant-pushing instruction. */
+    static String constantMnemonic(int opcode) {
+        if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
+            return "iconst";
+        }
+        return switch (opcode) {
+            case Opcodes.LCONST_0, Opcodes.LCONST_1 -> "lconst";
+            case Opcodes.FCONST_0, Opcodes.FCONST_1, Opcodes.FCONST_2 -> "fconst";
+            case Opcodes.DCONST_0, Opcodes.DCONST_1 -> "dconst";
+            default -> "aconst_null";
+        };
     }
 
     /**

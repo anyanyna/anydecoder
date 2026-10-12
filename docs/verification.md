@@ -119,11 +119,33 @@ it as `SUSPECT` rather than excusing it on a heuristic is the consistent choice.
 largest single category in the corpus results, and
 [`validation/RESULTS.md`](../validation/RESULTS.md) says so with the counts.
 
-### `consts` — loaded constants · hard
+### `consts` — pool-resident constants · hard
 
-Compares pool-resident constants by **value**. The pool index is stripped, because two compilations
-of the same source assign different indices; the class literal, string, or numeric value is what
-carries meaning.
+Compares pool-resident constants by **value**: string literals, class literals, method handles,
+and numeric literals too wide to encode in an instruction. The pool index is stripped, because two
+compilations of the same source assign different indices; the value is what carries meaning.
+
+### `smallConsts` — constants encoded in the instruction · suspect
+
+Compares the constants whose value lives in *which instruction appears* rather than in a pool
+entry: `iconst_0` through `iconst_5`, the `lconst`/`fconst`/`dconst` forms, `aconst_null`, and
+the `bipush`/`sipush` range.
+
+**This signal exists because writing a test found a hole.** `return 1` and `return 2` were being
+reported as equivalent. The two differ only in which of two instructions is present, and every
+signal compared instructions by *kind* — so the same instruction appeared on both sides and
+nothing looked further. A changed integer literal, in other words, was invisible.
+
+Closing it is right; making it hard is not. Measured on source already verified faithful by hand,
+treating these as hard produced **183 false positives**, and they are not one clean pattern: the
+clearest case is a `void` method with no `ireturn` at all where the original simply pushes one
+extra `iconst_0` and one extra `iconst_1`. The mechanism is not characterised, and a divergence
+that cannot be named cannot be excused under any of the categories below.
+
+So it is reported at a severity that says exactly that: a difference worth looking at, not
+evidence on its own. On that corpus, 143 classes moved from `EQUIVALENT` into `SUSPECT` and the
+hard verdicts moved by 16. The report groups findings by cause, so the group can be read once and
+skipped thereafter.
 
 ### `instrCount` — body size · suspect
 
@@ -246,6 +268,17 @@ in both, with the slots deliberately not compared because they differ between co
 no static fix for this that does not reintroduce the operand-order noise the whole design is built
 to exclude. Differential testing covers it for methods it can drive, and the test suite contains a
 case that demonstrates both halves of that claim.
+
+**A small constant pushed a different *number of times* cannot be told from a compiler
+difference.** The `smallConsts` signal reports it, but the difference between "the author wrote a
+literal here and the recovered source does not" and "the compiler pushes a zero one more time" is
+not visible in the instruction stream without a control-flow analysis this does not do. A changed
+literal's *value* is a hard difference and is caught; a changed *count* is not decidable here.
+
+**A blind spot that was found by writing a test rather than by running one.** The small-constant
+hole above had been invisible from the day the first signal was written. It surfaced when a test
+helper accidentally swapped both a method's name and its body and asserted the result was
+equivalent — the assertion passed, which was the bug report.
 
 **Nothing here observes runtime behaviour** except differential testing.
 

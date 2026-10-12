@@ -7,6 +7,7 @@ import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
 import com.anydecoder.core.gate.GateReport;
 import com.anydecoder.core.gate.Verdict;
+import com.anydecoder.core.pipeline.EngineSubstitution;
 import com.anydecoder.core.pipeline.PipelineOutcome;
 
 import java.util.ArrayList;
@@ -108,6 +109,7 @@ public final class GateReportWriter {
             sb.append('\n');
         }
 
+        appendEngineSubstitutions(sb, outcome);
         appendThrowsAdvisory(sb, report);
 
         sb.append("## Build\n\n");
@@ -165,6 +167,35 @@ public final class GateReportWriter {
     }
 
     /**
+     * Classes the gate was unhappy with that another engine's rendering fixed.
+     *
+     * <p>Worth reporting because the tree is no longer one engine's output. The gate says whether
+     * a class is faithful, not which tool wrote it, and a reader who later regenerates the tree
+     * from one engine would get different results for these.
+     */
+    private static void appendEngineSubstitutions(StringBuilder sb, PipelineOutcome outcome) {
+        List<EngineSubstitution.Attempt> kept = outcome.substitutions().stream()
+                .filter(EngineSubstitution.Attempt::kept).toList();
+        if (kept.isEmpty()) {
+            return;
+        }
+        sb.append("## Repaired by using another engine's rendering\n\n");
+        sb.append("The gate was unhappy with these; the other decompiler's version of the same")
+                .append(" class was compiled and gated, and kept because it came out safe. Every")
+                .append(" one is recorded so the tree's provenance is not a mystery.\n\n");
+        sb.append("| class | was | now | from |\n|---|---|---|---|\n");
+        for (EngineSubstitution.Attempt attempt : kept.stream().limit(60).toList()) {
+            sb.append("| `").append(attempt.className().replace('/', '.')).append("` | ")
+                    .append(attempt.before()).append(" | ").append(attempt.after()).append(" | ")
+                    .append(attempt.engine()).append(" |\n");
+        }
+        if (kept.size() > 60) {
+            sb.append("\n... and ").append(kept.size() - 60).append(" more\n");
+        }
+        sb.append('\n');
+    }
+
+    /**
      * Classes that are faithful but lost a declared exception.
      *
      * <p>Separate from the review list because it is not a behavioural difference — the clause is
@@ -203,7 +234,8 @@ public final class GateReportWriter {
             "athrow", "a rethrow became a jump; the exception may be swallowed",
             "invokes", "a call was added, removed, or moved to another member",
             "fields", "a field is touched on one side only, as a different opcode",
-            "consts", "a loaded constant changed",
+            "consts", "a constant loaded from the pool changed",
+            "smallConsts", "a small constant pushed in the instruction changed -- commonly a compiler difference, see docs/verification.md",
             "api", "the declared members or class flags changed",
             "members", "a method is missing from one side",
             "instrCount", "the body changed size beyond what a compiler difference explains",

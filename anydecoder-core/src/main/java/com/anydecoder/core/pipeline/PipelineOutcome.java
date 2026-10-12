@@ -19,7 +19,10 @@ import java.util.Map;
  * @param unbuildableSources sources the rebuild could not use, each with the compiler's reason.
  *                           Their classes are absent, so the gate scores them as not reached --
  *                           which is the honest outcome, and the worklist for a repair pass.
- * @param substitutedSources files rescued by another engine's rendering
+ * @param substitutedSources files rescued by another engine's rendering so that they would
+ *                           compile at all
+ * @param substitutions      classes handed to another engine after the gate was unhappy with
+ *                           them; only the ones that improved are kept
  * @param gate               the verdicts, and the coverage behind them
  * @param rebuiltClasses     where the rebuilt class files landed
  * @param normalization      how many files each cleanup pass touched
@@ -31,6 +34,7 @@ public record PipelineOutcome(
         CompileOutcome compile,
         List<SourceTreeCompiler.ExcludedSource> unbuildableSources,
         List<String> substitutedSources,
+        List<EngineSubstitution.Attempt> substitutions,
         GateReport gate,
         Path rebuiltClasses,
         Map<String, Integer> normalization) {

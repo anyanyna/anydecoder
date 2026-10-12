@@ -119,29 +119,101 @@ public final class BenignDivergenceClassifier {
     // ecj materialises a boolean result instead of branching to it.
     // ------------------------------------------------------------------------------------------
 
+    /**
+     * Excuses a boolean result materialised into instructions rather than branched to.
+     *
+     * <p>One measured pattern produces two signals at once. Where javac emits
+     * {@code ifeq L; iconst_0; goto M; L: iconst_1}, the older compiler here emits
+     * {@code ifeq L; iconst_1; ireturn; L: iconst_0; ireturn} — an extra {@code ireturn}, an
+     * extra {@code iconst_0} and an extra {@code iconst_1}, per boolean result.
+     *
+     * <p>So the body grows by that many instructions <em>and</em> pushes that many more constants.
+     * Both have to be explained together or the class stays flagged for a difference that is one
+     * artefact seen twice. The rule is stated as an equality rather than a threshold: the size
+     * delta, the constant delta and the {@code ireturn} delta must all be the same number, and the
+     * only constants that may differ are {@code 0} and {@code 1}.
+     */
     private static void tryExplainBooleanMaterialization(
             MethodModel original, MethodModel rebuilt, List<Divergence> blocking,
             List<Divergence> unexplained, List<Explanation> explanations) {
 
-        if (!onlySignals(blocking, "instrCount")) {
+        if (!onlySignals(blocking, "instrCount", "consts", "smallConsts")) {
             return;
         }
         int ireturnDelta = countOpcode(rebuilt, Opcodes.IRETURN) - countOpcode(original, Opcodes.IRETURN);
-        int constDelta = (countOpcode(rebuilt, Opcodes.ICONST_0) + countOpcode(rebuilt, Opcodes.ICONST_1))
-                - (countOpcode(original, Opcodes.ICONST_0) + countOpcode(original, Opcodes.ICONST_1));
         int totalDelta = rebuilt.instructions().size() - original.instructions().size();
-
-        if (ireturnDelta == 0 || constDelta == 0 || ireturnDelta != totalDelta || constDelta != totalDelta) {
+        if (ireturnDelta == 0 || ireturnDelta != totalDelta) {
             return;
         }
-        Divergence target = find(unexplained, "instrCount");
-        unexplained.remove(target);
+        // When the constants are also reported, only the ones a boolean materialisation
+        // introduces may differ. When they are not reported there is nothing to check.
+        boolean constantsReported = find(blocking, "consts") != null
+                || find(blocking, "smallConsts") != null;
+        if (constantsReported
+                && !constantsDifferOnlyInBooleanMaterialization(original, rebuilt, ireturnDelta)) {
+            return;
+        }
+
+        List<Divergence> explained = new ArrayList<>();
+        for (Divergence divergence : unexplained) {
+            if (divergence.signalId().equals("instrCount")
+                    || divergence.signalId().equals("consts")
+                    || divergence.signalId().equals("smallConsts")) {
+                explained.add(divergence);
+            }
+        }
+        if (explained.isEmpty()) {
+            return;
+        }
+        unexplained.removeAll(explained);
         explanations.add(new Explanation(
                 "ECJ_BOOLEAN_MATERIALIZATION",
-                "the size difference is exactly the extra ireturn/iconst_0/iconst_1 triples"
-                        + " (delta " + sign(totalDelta) + ") that ecj emits to materialise a boolean"
-                        + " result where javac branches straight to the constant",
-                List.of("instrCount")));
+                "the rebuild is " + Math.abs(totalDelta) + " instruction(s) "
+                        + (totalDelta > 0 ? "larger" : "smaller") + " and pushes "
+                        + Math.abs(ireturnDelta) + " more/fewer int constants, in step with "
+                        + Math.abs(ireturnDelta) + " ireturn difference(s): the compiler that built"
+                        + " the original materialises a boolean result into iconst/ireturn where"
+                        + " javac branches straight to the constant",
+                explained.stream().map(Divergence::signalId).distinct().toList()));
+    }
+
+    /**
+     * Whether the two methods' constant multisets differ only by {@code int:0} and {@code int:1},
+     * and by exactly {@code delta} of them.
+     */
+    private static boolean constantsDifferOnlyInBooleanMaterialization(
+            MethodModel original, MethodModel rebuilt, int delta) {
+        Map<String, Integer> left = constantCounts(original);
+        Map<String, Integer> right = constantCounts(rebuilt);
+        Set<String> keys = new java.util.LinkedHashSet<>(left.keySet());
+        keys.addAll(right.keySet());
+
+        int movedInts = 0;
+        for (String key : keys) {
+            int difference = right.getOrDefault(key, 0) - left.getOrDefault(key, 0);
+            if (difference == 0) {
+                continue;
+            }
+            if (key.equals("int:0") || key.equals("int:1")) {
+                movedInts += difference;
+                continue;
+            }
+            // Something else changed, so this is not the boolean pattern.
+            return false;
+        }
+        return Math.abs(movedInts) == Math.abs(delta);
+    }
+
+    private static Map<String, Integer> constantCounts(MethodModel method) {
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        for (Insn insn : method.instructions()) {
+            switch (insn.mnemonic()) {
+                case "ldc", "iconst", "lconst", "fconst", "dconst", "aconst_null", "push" ->
+                        counts.merge(insn.operand(), 1, Integer::sum);
+                default -> { }
+            }
+        }
+        return counts;
     }
 
     // ------------------------------------------------------------------------------------------

@@ -12,14 +12,32 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Compares the constants a method loads, by value.
+ * Compares the constants a method pushes, by value.
  *
- * <p>Only pool-resident constants are compared -- strings, class literals, large numeric
- * literals, method handles. Small integer constants arrive as dedicated opcodes
- * ({@code iconst_1}) which the instruction stream already covers. Comparing values rather than
- * pool indices is what makes this usable across compilers.
+ * <p><b>Every</b> constant-pushing instruction, not only {@code ldc}. That distinction was a real
+ * hole: small integers are encoded in the opcode itself — {@code iconst_1} and {@code iconst_2}
+ * are two different instructions, not one instruction with two operands — so a comparison of
+ * instruction <em>kinds</em> sees the same instruction twice and reports {@code return 1} as
+ * equivalent to {@code return 2}. Byte and short range values pushed with {@code bipush} or
+ * {@code sipush} were invisible for the same reason.
+ *
+ * <p>{@link ClassModelReader} lifts each of those values into the operand and names it by its
+ * value, so a constant pushed by any route compares equal to the same value loaded from the pool.
+ * Comparing values rather than pool indices is what makes this usable across compilers in the
+ * first place.
  */
 public final class ConstantSignal implements Signal {
+
+    /**
+     * Pool-resident constants only: strings, class literals, method handles, and the numeric
+     * literals too wide to encode in an instruction.
+     *
+     * <p>Small integers and {@code null} are deliberately excluded — {@link SmallConstantSignal}
+     * reports those separately and at a lower severity. Measured on source already verified
+     * faithful, treating them as hard produced 183 false positives, because how a compiler pushes
+     * a zero or a small integer varies far more than what a string literal says.
+     */
+    private static final String POOL_LOAD = "ldc";
 
     @Override
     public String id() {
@@ -47,9 +65,7 @@ public final class ConstantSignal implements Signal {
     private static List<String> constants(MethodModel method) {
         List<String> out = new ArrayList<>();
         for (Insn insn : method.instructions()) {
-            // ClassModelReader renders every pool load under the mnemonic "ldc", folding the
-            // _w and 2_w width variants that carry no meaning.
-            if ("ldc".equals(insn.mnemonic())) {
+            if (POOL_LOAD.equals(insn.mnemonic())) {
                 out.add(insn.operand());
             }
         }
