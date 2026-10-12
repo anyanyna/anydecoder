@@ -38,14 +38,14 @@ class EngineSubstitutionTest {
     @Test
     @DisplayName("a class the other engine gets right is swapped in")
     void keepsTheBetterRendering(@TempDir Path work) throws Exception {
-        Fixture f = new Fixture(work, "return 1;", "return 2;", "return 1;");
+        Fixture f = new Fixture(work, "return \"a\";", "return \"b\";", "return \"a\";");
 
         List<EngineSubstitution.Attempt> attempts = f.run();
 
         assertEquals(1, attempts.size());
         assertTrue(attempts.get(0).kept(), "the alternative matches the original bytecode");
         assertEquals(Verdict.EQUIVALENT, attempts.get(0).after());
-        assertTrue(f.primaryText().contains("return 1;"),
+        assertTrue(f.primaryText().contains("return \"a\";"),
                 "the tree should now hold the rendering that gates clean");
         assertTrue(Files.exists(f.classes().resolve("sample/Target.class")));
     }
@@ -53,13 +53,13 @@ class EngineSubstitutionTest {
     @Test
     @DisplayName("a swap that does not help is reverted, source and class files both")
     void revertsAnUnhelpfulSwap(@TempDir Path work) throws Exception {
-        Fixture f = new Fixture(work, "return 1;", "return 2;", "return 3;");
+        Fixture f = new Fixture(work, "return \"a\";", "return \"b\";", "return \"c\";");
 
         List<EngineSubstitution.Attempt> attempts = f.run();
 
         assertTrue(attempts.isEmpty() || attempts.stream().noneMatch(EngineSubstitution.Attempt::kept),
                 "a rendering that is wrong differently is not an improvement");
-        assertTrue(f.primaryText().contains("return 2;"),
+        assertTrue(f.primaryText().contains("return \"b\";"),
                 "the original source must be restored, not left as the abandoned attempt");
 
         // And the compiled output has to match the restored source again, or the tree is
@@ -74,17 +74,26 @@ class EngineSubstitutionTest {
     @Test
     @DisplayName("an identical rendering is not attempted at all")
     void skipsWhenTheEnginesAgree(@TempDir Path work) throws Exception {
-        Fixture f = new Fixture(work, "return 1;", "return 2;", "return 2;");
+        Fixture f = new Fixture(work, "return \"a\";", "return \"b\";", "return \"b\";");
 
         List<EngineSubstitution.Attempt> attempts = f.run();
 
         assertTrue(attempts.isEmpty(), "there is nothing to try when both engines produced the same file");
-        assertTrue(f.primaryText().contains("return 2;"));
+        assertTrue(f.primaryText().contains("return \"b\";"),
+                "the primary rendering should be untouched");
     }
 
     // ------------------------------------------------------------------------------------------
 
-    /** A class whose original returns 1, with a primary and an alternative rendering of it. */
+    /**
+     * A class returning a string literal, with a primary and an alternative rendering of it.
+     *
+     * <p>The fixture uses a <em>pool</em> constant deliberately. An integer literal would only
+     * raise an advisory — the value lives in which instruction appears, and that signal is
+     * recorded rather than judged because every instance measured on real source turned out to
+     * be a compiler choice. A string literal is a hard difference, which is what this test needs
+     * to have something to repair.
+     */
     private static final class Fixture {
         private final Path primary;
         private final Path alternative;
@@ -139,14 +148,14 @@ class EngineSubstitutionTest {
         private void write(Path root, String body) throws Exception {
             Path file = root.resolve("sample/Target.java");
             Files.createDirectories(file.getParent());
-            Files.writeString(file, "package sample; public class Target { public int f() { "
+            Files.writeString(file, "package sample; public class Target { public String f() { "
                     + body + " } }", StandardCharsets.UTF_8);
         }
 
         private static void compile(Path sourceDir, String body, Path output) throws Exception {
             Path file = sourceDir.resolve("sample/Target.java");
             Files.createDirectories(file.getParent());
-            Files.writeString(file, "package sample; public class Target { public int f() { "
+            Files.writeString(file, "package sample; public class Target { public String f() { "
                     + body + " } }", StandardCharsets.UTF_8);
             Files.createDirectories(output);
             int status = ToolProvider.getSystemJavaCompiler().run(

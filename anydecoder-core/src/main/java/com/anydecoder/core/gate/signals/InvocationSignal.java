@@ -76,9 +76,30 @@ public final class InvocationSignal implements Signal {
             if (isConcatenationTraffic(insn.operand())) {
                 continue;
             }
-            out.add(insn.operand());
+            out.add(canonicalNullCheck(insn.operand()));
         }
         return out;
+    }
+
+    /**
+     * Collapses the two encodings of an implicit null check into one name.
+     *
+     * <p>When a qualifier has to be evaluated for its side effect but its result is discarded —
+     * a static field read through an instance, or {@code outer.new Inner()} — the compiler inserts
+     * a null check. The older compiler emitted
+     * {@code aload x; invokevirtual Object.getClass; pop}; javac 17 emits
+     * {@code aload x; invokestatic Objects.requireNonNull; pop}. Same guard, same stack effect,
+     * different generation.
+     *
+     * <p>This was one of the most common false positives on the validation corpus, appearing in
+     * classes whose only difference was this substitution.
+     */
+    static String canonicalNullCheck(String callee) {
+        if (callee.equals("java/lang/Object.getClass()Ljava/lang/Class;")
+                || callee.startsWith("java/util/Objects.requireNonNull(")) {
+            return "java/lang/Object.nullCheck()V";
+        }
+        return callee;
     }
 
     static boolean isConcatenationTraffic(String resolvedCallee) {

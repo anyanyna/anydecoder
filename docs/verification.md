@@ -125,7 +125,7 @@ Compares pool-resident constants by **value**: string literals, class literals, 
 and numeric literals too wide to encode in an instruction. The pool index is stripped, because two
 compilations of the same source assign different indices; the value is what carries meaning.
 
-### `smallConsts` — constants encoded in the instruction · suspect
+### `smallConsts` — constants encoded in the instruction · advisory
 
 Compares the constants whose value lives in *which instruction appears* rather than in a pool
 entry: `iconst_0` through `iconst_5`, the `lconst`/`fconst`/`dconst` forms, `aconst_null`, and
@@ -136,16 +136,24 @@ reported as equivalent. The two differ only in which of two instructions is pres
 signal compared instructions by *kind* — so the same instruction appeared on both sides and
 nothing looked further. A changed integer literal, in other words, was invisible.
 
-Closing it is right; making it hard is not. Measured on source already verified faithful by hand,
-treating these as hard produced **183 false positives**, and they are not one clean pattern: the
-clearest case is a `void` method with no `ireturn` at all where the original simply pushes one
-extra `iconst_0` and one extra `iconst_1`. The mechanism is not characterised, and a divergence
-that cannot be named cannot be excused under any of the categories below.
+Closing it is right; making it a finding is not, and three measurements were needed to accept
+that.
 
-So it is reported at a severity that says exactly that: a difference worth looking at, not
-evidence on its own. On that corpus, 143 classes moved from `EQUIVALENT` into `SUSPECT` and the
-hard verdicts moved by 16. The report groups findings by cause, so the group can be read once and
-skipped thereafter.
+- As a **hard** signal it produced 183 false positives on source already verified faithful by hand.
+- As **suspect** it added about 150 classes to the review list. Still not actionable.
+- The obvious discriminator — a changed *value* is real, a changed *count* is codegen — was
+  tested and **rejected by the data**: 90 classes had a value present on one side only, and every
+  one was a compiler choice about how to initialise a local or push a zero.
+
+The mechanism is not characterised, and a difference that cannot be named cannot be excused under
+any of the categories below — nor should it be asserted as a defect. So it is recorded and not
+judged: a reader looking at the method sees the note, the verdict claims only what it can support,
+and the review list stays actionable. The report groups findings by cause, so the note is read
+once.
+
+What this trades away is stated plainly: `return 1` becoming `return 2` would raise a note and not
+a finding. The hard `consts` signal catches a changed *string*, class literal or wide numeric, so a
+changed literal of those kinds still fails the gate; a changed small integer does not.
 
 ### `instrCount` — body size · suspect
 
