@@ -72,6 +72,14 @@ public final class ClassGate {
             if (counterpart == null) {
                 continue;
             }
+            // Compiler-generated bodies are not compared. A synthetic accessor exists to expose a
+            // private member and a bridge method to adapt a generic signature; how either is
+            // written is the compiler's business, and the two compilers here order the underlying
+            // loads and casts differently. The member accesses that matter are the ones in the
+            // real methods that call through them, and those are compared.
+            if (isCompilerGenerated(method)) {
+                continue;
+            }
             List<Divergence> methodDivergences = new ArrayList<>();
             for (Signal signal : methodSignals) {
                 signal.compare(method, counterpart).ifPresent(methodDivergences::add);
@@ -97,6 +105,20 @@ public final class ClassGate {
 
         return new ClassVerdict(original.name(), verdictOf(divergences, unexplained),
                 List.copyOf(divergences), List.copyOf(explanations), List.copyOf(unexplained), null);
+    }
+
+    /**
+     * Whether a method's body was written by the compiler rather than by the author.
+     *
+     * <p>Detected by name as well as by flag, because the flag is not set on every accessor a
+     * compiler emits — see {@link ApiComparison#isSyntheticAccessor}.
+     */
+    private static boolean isCompilerGenerated(MethodModel method) {
+        if ((method.access() & (org.objectweb.asm.Opcodes.ACC_SYNTHETIC
+                | org.objectweb.asm.Opcodes.ACC_BRIDGE)) != 0) {
+            return true;
+        }
+        return ApiComparison.isSyntheticAccessor(method.name());
     }
 
     private void collectMethodSetDifferences(ClassModel original, ClassModel rebuilt,

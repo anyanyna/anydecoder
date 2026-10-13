@@ -207,6 +207,50 @@ which does not change what the tolerances must accommodate — differences betwe
 compiler built the original and whichever is doing the rebuild — but the `ECJ_*` category names
 should be read as inherited labels rather than a verified attribution.
 
+## 5. Applying the fixes to the recovered tree
+
+The twelve defects were fixed in the source tree itself, on a branch, with the gate re-run after
+each batch. The tree is compiled with **JDK 8** for this — the compiler generation that built the
+originals — which is a sharper check than the `--release 8` on a newer JDK used elsewhere here:
+the closer the rebuild compiler is to the original's, the less noise there is to see past.
+
+| | before | after |
+|---|---:|---:|
+| EQUIVALENT | 2803 | **2818** |
+| DAMAGED | 45 | **28** |
+| SUSPECT | 81 | 88 |
+
+| Fix | Verdict after |
+|---|---|
+| `ApplicationBO.initApp` — removed the `try`/`catch` | EQUIVALENT |
+| `MainController.initUserMenu` — removed the added `contains(".")` | EQUIVALENT |
+| `MainController$FileLogOffListener.onEvent` — removed the added SSO branch | EQUIVALENT |
+| `CustomUserService` — removed the added branch and the added method | EQUIVALENT |
+| the three `$ResultRender` — restored the explicit `public` constructor | EQUIVALENT |
+| `ExportStructureChartHelper$NodeMaxXAndMinX` — restored the explicit `public` constructor | EQUIVALENT |
+| `ElimruleController` — removed two dead boxed locals | SUSPECT¹ |
+
+¹ The remaining finding on the four still-flagged classes is the ternary field-store artefact:
+`this.x = cond ? a : b` compiles to one store per arm in the compiler that built the original and
+one store after the join in javac 8. It cannot be matched without rewriting the ternary into an
+`if`/`else` purely to please the comparator, which the original toolchain explicitly declined to
+do and this one does too.
+
+**Two bugs in the tool were found by doing this work**, both by looking at what it printed rather
+than by reasoning about it:
+
+- The field-store-hoisting rule excused a divergence whenever the loop over field *writes* had
+  nothing to iterate — a vacuous check running none of its guards and then granting the exemption.
+  A silent pass on evidence that did not exist. Fixed by requiring the check to have examined
+  something.
+- Compiler-generated method bodies were being compared. A synthetic accessor's instruction
+  sequence is the compiler's choice, and the two compilers order the underlying loads and casts
+  differently, so comparing them produced findings about nothing. They are now skipped by name as
+  well as by flag.
+
+Both were latent until the tree was compiled with its original compiler, where the remaining
+differences are few enough that a wrong one stands out.
+
 ## Reproducing
 
 Neither corpus nor compiled historical source is vendored here. Point the scripts at your own

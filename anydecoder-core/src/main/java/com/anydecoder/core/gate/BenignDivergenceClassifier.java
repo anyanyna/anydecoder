@@ -262,11 +262,23 @@ public final class BenignDivergenceClassifier {
         Map<String, Integer> originalWrites = fieldWrites(original);
         Map<String, Integer> rebuiltWrites = fieldWrites(rebuilt);
 
+        // The reasoning below rests on field *writes*. A difference that involves only reads has
+        // no writes to reason about, and a loop over an empty set of fields would run none of its
+        // checks and then excuse the divergence anyway -- an exemption with no evidence, which is
+        // the one thing this class must never do.
+        if (originalWrites.isEmpty() || rebuiltWrites.isEmpty()) {
+            return;
+        }
+
+        List<String> explained = new ArrayList<>();
         Set<String> fields = new LinkedHashSet<>(originalWrites.keySet());
         fields.addAll(rebuiltWrites.keySet());
         for (String field : fields) {
             int a = originalWrites.getOrDefault(field, 0);
             int b = rebuiltWrites.getOrDefault(field, 0);
+            if (a == b) {
+                continue;
+            }
             if (a <= b) {
                 // Only a reduction is characteristic of hoisting; anything else is unexplained.
                 return;
@@ -277,14 +289,19 @@ public final class BenignDivergenceClassifier {
             if (distinctStoredValues(original, field) > 1) {
                 return;
             }
+            explained.add(field + " " + a + "->" + b);
+        }
+        if (explained.isEmpty()) {
+            // Every field matched, so this rule has nothing to account for.
+            return;
         }
         unexplained.remove(target);
         explanations.add(new Explanation(
                 "FIELD_STORE_HOISTING",
-                "the original writes a field " + originalWrites.values() + " time(s) where the"
-                        + " rebuild writes it " + rebuiltWrites.values() + " time(s), every write"
-                        + " stores the same value, and the field is never read back -- so the"
-                        + " surviving write is the only observable effect",
+                "the original stores a field once per arm of a conditional and the rebuild stores"
+                        + " it once after the branches join (" + String.join(", ", explained)
+                        + "); the field is never read back and every store writes the same value,"
+                        + " so the surviving store is the only observable effect",
                 List.of("fields")));
     }
 

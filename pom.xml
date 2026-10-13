@@ -38,7 +38,11 @@
     <vineflower.version>1.11.1</vineflower.version>
     <procyon.version>0.6.0</procyon.version>
 
-    <asm.version>9.7.1</asm.version>
+    <!-- ASM must be new enough to read whatever JDK compiled the classes under test. 9.7.1
+         covers up to Java 22; anything compiled by a newer JDK fails with "Unsupported class
+         file major version", which is a hard failure of the whole run rather than a finding.
+         Bump this whenever a newer JDK ships. -->
+    <asm.version>9.11</asm.version>
     <picocli.version>4.7.6</picocli.version>
     <junit.version>5.10.2</junit.version>
   </properties>
