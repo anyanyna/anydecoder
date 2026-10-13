@@ -487,16 +487,23 @@ public final class BenignDivergenceClassifier {
         if (target == null) {
             return;
         }
+        // The claim is that the same assignment happens at a different point. When calls or
+        // constants also differ, that is no longer what is being claimed.
+        if (find(blocking, "consts") != null || find(blocking, "invokes") != null) {
+            return;
+        }
         Map<String, Integer> originalWrites = fieldWrites(original);
         Map<String, Integer> rebuiltWrites = fieldWrites(rebuilt);
 
-        // The reasoning below rests on field *writes*. A difference that involves only reads has
-        // no writes to reason about, and a loop over an empty set of fields would run none of its
-        // checks and then excuse the divergence anyway -- an exemption with no evidence, which is
-        // the one thing this class must never do.
+        // A difference that involves only reads has no writes to reason about, and a loop over an
+        // empty set of fields would run none of its checks and then excuse the divergence anyway --
+        // an exemption with no evidence, which is the one thing this class must never do.
         if (originalWrites.isEmpty() || rebuiltWrites.isEmpty()) {
             return;
         }
+
+        MethodFlow originalFlow = new MethodFlow(original);
+        MethodFlow rebuiltFlow = new MethodFlow(rebuilt);
 
         List<String> explained = new ArrayList<>();
         Set<String> fields = new LinkedHashSet<>(originalWrites.keySet());
@@ -511,10 +518,8 @@ public final class BenignDivergenceClassifier {
                 // Only a reduction is characteristic of hoisting; anything else is unexplained.
                 return;
             }
-            if (!isNeverRead(original, field) || !isNeverRead(rebuilt, field)) {
-                return;
-            }
-            if (distinctStoredValues(original, field) > 1) {
+            if (!noReadSeesAnIntermediateStore(original, originalFlow, field)
+                    || !noReadSeesAnIntermediateStore(rebuilt, rebuiltFlow, field)) {
                 return;
             }
             explained.add(field + " " + a + "->" + b);
@@ -526,11 +531,71 @@ public final class BenignDivergenceClassifier {
         unexplained.remove(target);
         explanations.add(new Explanation(
                 "FIELD_STORE_HOISTING",
-                "the original stores a field once per arm of a conditional and the rebuild stores"
-                        + " it once after the branches join (" + String.join(", ", explained)
-                        + "); the field is never read back and every store writes the same value,"
-                        + " so the surviving store is the only observable effect",
+                "the original stores a field inside each arm of a conditional and the rebuild"
+                        + " stores it once where the branches meet (" + String.join(", ", explained)
+                        + "); the same value is produced either way, and no intermediate store can"
+                        + " be observed because every read of the field is dominated by a store that"
+                        + " has already completed",
                 List.of("fields")));
+    }
+
+    /**
+     * Whether every read of {@code field} sees the final value rather than one on the way there.
+     *
+     * <p>The condition is about the reads <em>between</em> stores: starting from any store but the
+     * last, following control without passing through the last store, no read of the field may be
+     * reached. Any read that can be is reading a value that a later store is about to overwrite,
+     * and moving the stores changes what it sees.
+     *
+     * <p>A read that happens before every store — the ordinary shape of
+     * {@code this.x = this.x == null ? a : b} — is fine, and an earlier version of this rule got
+     * that wrong. It asked whether each read was <em>dominated</em> by a store, which no read
+     * before the first store is, so it refused the common case while accepting almost nothing
+     * else. Dominance answers "did a store definitely happen yet"; the question here is "has a
+     * later store definitely <em>not</em> happened yet", and that is reachability.
+     *
+     * <p>This replaced a comparison of the stored values, which required them all to be equal and
+     * identifiable from the neighbouring instructions — far too strict, because a value that comes
+     * from a method call reads as unknown and made the rule give up on the store of
+     * {@code format(record.value)}.
+     */
+    private static boolean noReadSeesAnIntermediateStore(MethodModel method, MethodFlow flow,
+                                                          String field) {
+        List<Insn> insns = method.instructions();
+        List<Integer> stores = new ArrayList<>();
+        List<Integer> reads = new ArrayList<>();
+        for (int i = 0; i < insns.size(); i++) {
+            Insn insn = insns.get(i);
+            if (insn.opcode() == Opcodes.PUTFIELD || insn.opcode() == Opcodes.PUTSTATIC) {
+                if (insn.operand().equals(field)) {
+                    stores.add(i);
+                }
+            } else if (insn.opcode() == Opcodes.GETFIELD || insn.opcode() == Opcodes.GETSTATIC) {
+                if (insn.operand().equals(field)) {
+                    reads.add(i);
+                }
+            }
+        }
+        if (stores.isEmpty()) {
+            return false;
+        }
+        if (reads.isEmpty()) {
+            return true;
+        }
+
+        int lastStore = stores.get(stores.size() - 1);
+        for (int store : stores) {
+            if (store == lastStore) {
+                continue;
+            }
+            java.util.BitSet reached = flow.reachableFrom(store, lastStore);
+            for (int read : reads) {
+                if (reached.get(read)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static Map<String, Integer> fieldWrites(MethodModel method) {
@@ -541,52 +606,6 @@ public final class BenignDivergenceClassifier {
             }
         }
         return writes;
-    }
-
-    private static boolean isNeverRead(MethodModel method, String field) {
-        return method.instructions().stream().noneMatch(i ->
-                (i.opcode() == Opcodes.GETFIELD || i.opcode() == Opcodes.GETSTATIC)
-                        && i.operand().equals(field));
-    }
-
-    /**
-     * How many distinct values the method stores into a field, looking at the instruction
-     * immediately preceding each store. Returns a large number when a store's value cannot be
-     * attributed to a simple constant, which makes the caller treat it as unexplained.
-     */
-    private static int distinctStoredValues(MethodModel method, String field) {
-        Set<String> values = new LinkedHashSet<>();
-        List<Insn> insns = method.instructions();
-        for (int i = 0; i < insns.size(); i++) {
-            Insn insn = insns.get(i);
-            if ((insn.opcode() != Opcodes.PUTFIELD && insn.opcode() != Opcodes.PUTSTATIC)
-                    || !insn.operand().equals(field)) {
-                continue;
-            }
-            String source = valueSource(insns, i);
-            if (source == null) {
-                return Integer.MAX_VALUE;
-            }
-            values.add(source);
-        }
-        return values.size();
-    }
-
-    /** The nearest preceding constant-producing instruction, or null if there is none nearby. */
-    private static String valueSource(List<Insn> insns, int storeIndex) {
-        for (int i = storeIndex - 1; i >= 0 && i >= storeIndex - 4; i--) {
-            Insn candidate = insns.get(i);
-            String m = candidate.mnemonic();
-            if ("ldc".equals(m) || "push".equals(m) || "aconst_null".equals(m)
-                    || m.startsWith("iconst") || m.startsWith("lconst") || m.startsWith("fconst")
-                    || m.startsWith("dconst")) {
-                return candidate.render();
-            }
-            if (!"dup".equals(m) && !"aload".equals(m) && !"aload_0".equals(m)) {
-                return null;
-            }
-        }
-        return null;
     }
 
     // ------------------------------------------------------------------------------------------

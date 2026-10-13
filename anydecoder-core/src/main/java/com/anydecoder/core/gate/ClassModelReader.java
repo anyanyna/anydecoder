@@ -102,20 +102,23 @@ public final class ClassModelReader {
         List<Insn> instructions = new ArrayList<>();
         Map<LabelNode, Integer> labelPositions = new IdentityHashMap<>();
 
+        // Two passes. A label's instruction index is only known once the instructions before it
+        // have been counted, and a forward branch refers to a label that has not been reached yet
+        // -- so the positions are collected first and the branches resolved afterwards.
+        int index = 0;
         for (AbstractInsnNode node = m.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof LabelNode label) {
-                // A label sits *before* whatever comes next, so its position is the count of
-                // real instructions emitted so far.
-                labelPositions.put(label, instructions.size());
+                labelPositions.put(label, index);
+            } else if (isRealInstruction(node)) {
+                index++;
+            }
+        }
+
+        for (AbstractInsnNode node = m.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (!isRealInstruction(node)) {
                 continue;
             }
-            if (node instanceof LineNumberNode) {
-                continue;
-            }
-            Insn insn = toInsn(node);
-            if (insn != null) {
-                instructions.add(insn);
-            }
+            instructions.add(toInsn(node, labelPositions));
         }
 
         List<ExceptionEntry> table = new ArrayList<>();
@@ -141,17 +144,41 @@ public final class ClassModelReader {
                 instructions, table, locals);
     }
 
+    /** Every destination of a switch: the default first, then each case. */
+    private static int[] switchTargets(LabelNode dflt, List<LabelNode> labels,
+                                       Map<LabelNode, Integer> positions) {
+        int[] targets = new int[labels.size() + 1];
+        targets[0] = position(positions, dflt, Insn.NO_TARGET);
+        for (int i = 0; i < labels.size(); i++) {
+            targets[i + 1] = position(positions, labels.get(i), Insn.NO_TARGET);
+        }
+        return targets;
+    }
+
     private static int position(Map<LabelNode, Integer> positions, LabelNode label, int fallback) {
         Integer p = positions.get(label);
         return p == null ? fallback : p;
     }
 
-    private static Insn toInsn(AbstractInsnNode node) {
-        int opcode = node.getOpcode();
-        if (opcode < 0) {
-            // Pseudo-instructions (frames) carry no executable meaning.
-            return null;
+    /**
+     * Whether a node is an instruction the model records.
+     *
+     * <p>Labels and line numbers carry no executable meaning; the rest do, including the frame
+     * pseudo-instructions, which are dropped later rather than here so that the two passes agree
+     * on the count.
+     */
+    private static boolean isRealInstruction(AbstractInsnNode node) {
+        if (node instanceof LabelNode || node instanceof LineNumberNode) {
+            return false;
         }
+        // Frame pseudo-instructions carry no executable meaning and differ between compilers, so
+        // they must not reach the comparison. Frames are skipped at read time; this is the belt
+        // to that pair of braces, and it keeps the two passes counting the same things.
+        return node.getOpcode() >= 0;
+    }
+
+    private static Insn toInsn(AbstractInsnNode node, Map<LabelNode, Integer> labelPositions) {
+        int opcode = node.getOpcode();
         String mnemonic = Printer.OPCODES[opcode];
 
         if (node instanceof InsnNode) {
@@ -197,9 +224,12 @@ public final class ClassModelReader {
             // what a faithful recompilation reproduces.
             return new Insn(opcode, mnemonic, indy.name + indy.desc, true);
         }
-        if (node instanceof JumpInsnNode) {
-            // Branch targets move between compilers; nothing about them is source-visible.
-            return new Insn(opcode, mnemonic, "", OpcodeSafety.canThrow(opcode));
+        if (node instanceof JumpInsnNode jump) {
+            // The branch target moves between compilers and carries no source-level meaning, so
+            // it stays out of the rendered form -- but the *shape* of the control flow is what
+            // tells a merged assignment from a dropped one, so the index is kept for analysis.
+            return new Insn(opcode, mnemonic, "", position(labelPositions, jump.label,
+                    Insn.NO_TARGET), OpcodeSafety.canThrow(opcode));
         }
         if (node instanceof LdcInsnNode ldc) {
             return new Insn(opcode, "ldc", constantOf(ldc.cst), false);
@@ -215,7 +245,8 @@ public final class ClassModelReader {
                 }
                 sb.append(i);
             }
-            return new Insn(opcode, mnemonic, sb.toString(), false);
+            return new Insn(opcode, mnemonic, sb.toString(),
+                    switchTargets(ts.dflt, ts.labels, labelPositions), false);
         }
         if (node instanceof LookupSwitchInsnNode ls) {
             StringBuilder sb = new StringBuilder();
@@ -225,7 +256,8 @@ public final class ClassModelReader {
                 }
                 sb.append(key);
             }
-            return new Insn(opcode, mnemonic, sb.toString(), false);
+            return new Insn(opcode, mnemonic, sb.toString(),
+                    switchTargets(ls.dflt, ls.labels, labelPositions), false);
         }
         if (node instanceof MultiANewArrayInsnNode ma) {
             return new Insn(opcode, mnemonic, ma.desc + " x" + ma.dims, true);
