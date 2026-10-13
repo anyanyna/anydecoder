@@ -45,6 +45,17 @@ You repair one decompiled class so that recompiling it reproduces the original b
 5. **Report the verdict, not your confidence.** Either the gate now passes for this class, or it
    does not and you say what remains.
 
+If the method you changed is drivable from primitives and strings, run the differential test on
+the class as a second, independent check:
+
+```bash
+java -jar anydecoder-cli/target/anydecoder.jar difftest <original-classes> <classes-dir> \
+  --deps "<deps>"
+```
+
+The gate compares structure and cannot see two statements of the same kind swapped in order.
+Worth doing when the repair touched control flow rather than a type or a cast.
+
 ## Recurring causes, and what each looks like
 
 | Symptom in the findings | What actually happened | The fix |

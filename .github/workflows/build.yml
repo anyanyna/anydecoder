@@ -36,7 +36,9 @@ jobs:
       - name: Check the CLI runs
         run: |
           java -jar anydecoder-cli/target/anydecoder.jar --version
+          java -jar anydecoder-cli/target/anydecoder.jar run --help
           java -jar anydecoder-cli/target/anydecoder.jar gate --help
+          java -jar anydecoder-cli/target/anydecoder.jar difftest --help
 
       - name: Upload test reports
         if: failure()

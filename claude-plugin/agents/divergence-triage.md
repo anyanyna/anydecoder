@@ -58,6 +58,23 @@ Each of these has been measured on real corpora. Confirm the pattern is present;
   barely moves the instruction count. Only the `athrow` signal catches it. Real defect.
 - **A `catch (Throwable)` becoming `catch (Exception)`.** Fewer exceptions are caught. Real defect.
 
+## When the gate cannot settle it
+
+Two independent statements of the same kind, swapped in order, produce an identical instruction
+multiset — an operand swap in `a - b` is invisible to every signal. If what you are looking at has
+that shape, or the signals disagree in a way structure cannot explain, run the differential test
+rather than reasoning about it:
+
+```bash
+java -jar anydecoder-cli/target/anydecoder.jar difftest <original-classes> <rebuilt-classes> \
+  --deps path/to/deps
+```
+
+It calls both versions with the same generated arguments and compares the results, which is the
+only thing here that observes behaviour. Note the seed it reports: a divergence that cannot be
+replayed is a rumour, and passing `--seed` reproduces it exactly. Methods it could not drive are
+listed rather than passed over — a run that drove nothing says nothing.
+
 ## Return
 
 For each divergence:
