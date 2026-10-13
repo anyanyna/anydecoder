@@ -16,6 +16,7 @@ import com.anydecoder.core.gate.ClassModelReader;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.GateReport;
 import com.anydecoder.core.gate.HierarchyIndex;
+import com.anydecoder.core.gate.WaiverRegistry;
 import com.anydecoder.core.ingest.ArtifactScanner;
 import com.anydecoder.core.ingest.ArtifactSet;
 import com.anydecoder.core.ingest.ClassArchiver;
@@ -80,7 +81,10 @@ public final class DecoderPipeline {
                     fallback.substitutions().size(), fallback.describe());
         }
 
-        GateReport report = runGate(artifacts, compile.outputDirectory(), log);
+        // Loaded once and shared, so a second gate pass after a substitution does not lose track of
+// which entries matched.
+        WaiverRegistry waivers = loadWaivers(options, artifacts, log);
+        GateReport report = runGate(artifacts, compile.outputDirectory(), waivers, log);
         List<EngineSubstitution.Attempt> substitutions = List.of();
 
         if (options.tryAlternativeEngines() && trees.size() > 1) {
@@ -89,13 +93,30 @@ public final class DecoderPipeline {
             if (substitutions.stream().anyMatch(EngineSubstitution.Attempt::kept)) {
                 // Verdicts changed, so re-gate the whole tree. Reporting a mixture of verdicts
                 // from before and after a repair would be worse than the few minutes it costs.
-                report = runGate(artifacts, compile.outputDirectory(), log);
+                report = runGate(artifacts, compile.outputDirectory(), waivers, log);
             }
         }
 
         return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(),
                 fallback.substitutions(), substitutions, report, compile.outputDirectory(),
-                normalizationCounts);
+                normalizationCounts, waivers);
+    }
+
+    /** The waiver file the caller named, or one sitting beside the classes, or none. */
+    private static WaiverRegistry loadWaivers(PipelineOptions options, ArtifactSet artifacts,
+                                              PrintStream log) throws IOException {
+        Path file = options.waivers();
+        if (file == null) {
+            Path conventional = artifacts.projectClasses().resolve("anydecoder-waivers.md");
+            if (!Files.isReadable(conventional)) {
+                return WaiverRegistry.empty();
+            }
+            file = conventional;
+        }
+        WaiverRegistry registry = WaiverRegistry.load(file);
+        log.printf("[gate] %d waiver(s) from %s, %d refused%n",
+                registry.size(), file, registry.rejected().size());
+        return registry;
     }
 
     /**
@@ -204,8 +225,8 @@ public final class DecoderPipeline {
                 options.workDir().resolve("classes"), classpath, release, fallback, log::println);
     }
 
-    private GateReport runGate(ArtifactSet artifacts, Path rebuiltClasses, PrintStream log)
-            throws IOException {
+    private GateReport runGate(ArtifactSet artifacts, Path rebuiltClasses, WaiverRegistry waivers,
+                              PrintStream log) throws IOException {
         Path originalClasses = artifacts.projectClasses();
 
         // The hierarchy index needs the same classpath the rebuild used: the dependencies, plus
@@ -216,6 +237,7 @@ public final class DecoderPipeline {
         List<Path> originals = classFiles(originalClasses);
         List<ClassVerdict> verdicts = originals.parallelStream()
                 .map(original -> gateOne(gate, originalClasses, rebuiltClasses, original))
+                .map(waivers::apply)
                 .sorted(Comparator.comparing(ClassVerdict::className))
                 .toList();
         GateReport report = new GateReport(verdicts);

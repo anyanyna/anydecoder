@@ -22,6 +22,11 @@ public record GateReport(List<ClassVerdict> verdicts) {
         return counts;
     }
 
+    /** Classes whose remaining differences were all accepted by a recorded waiver. */
+    public List<ClassVerdict> waived() {
+        return verdicts.stream().filter(v -> v.verdict() == Verdict.WAIVED).toList();
+    }
+
     public int total() {
         return verdicts.size();
     }

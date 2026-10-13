@@ -67,6 +67,11 @@ public final class RunCommand implements Callable<Integer> {
                     + " Discovery already finds a lib/ directory beside the classes.")
     private List<Path> dependencies;
 
+    @CommandLine.Option(names = {"--waivers"},
+            description = "A file of investigated-and-accepted divergences. Defaults to"
+                    + " anydecoder-waivers.md beside the classes, if one is there.")
+    private Path waivers;
+
     /**
      * Where the engine jars are extracted to.
      *
@@ -98,7 +103,8 @@ public final class RunCommand implements Callable<Integer> {
                 !noNormalize,
                 !noSubstitute,
                 dependencies == null ? List.of() : dependencies.stream()
-                        .map(Path::toAbsolutePath).toList());
+                        .map(Path::toAbsolutePath).toList(),
+                waivers == null ? null : waivers.toAbsolutePath());
 
         ToolCache cache = new ToolCache(toolsDirectory(resolvedWork),
                 java.util.Optional.ofNullable(tools));

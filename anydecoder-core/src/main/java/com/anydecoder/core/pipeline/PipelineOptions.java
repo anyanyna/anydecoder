@@ -19,6 +19,7 @@ import java.util.List;
  *                  elsewhere -- behind a different directory name, or resolved by a build tool
  *                  -- needs to say so, and without them the rebuild fails on symbols that were
  *                  never missing.
+ * @param waivers   a file of investigated-and-accepted divergences, or null for none
  */
 public record PipelineOptions(
         Path input,
@@ -27,7 +28,8 @@ public record PipelineOptions(
         List<String> engines,
         boolean enableNormalization,
         boolean tryAlternativeEngines,
-        List<Path> dependencyJars) {
+        List<Path> dependencyJars,
+        Path waivers) {
 
     public PipelineOptions {
         dependencyJars = List.copyOf(dependencyJars);
@@ -35,21 +37,26 @@ public record PipelineOptions(
 
     public static PipelineOptions defaults(Path input, Path workDir, Path outputDir) {
         return new PipelineOptions(input, workDir, outputDir,
-                List.of("cfr", "vineflower"), true, true, List.of());
+                List.of("cfr", "vineflower"), true, true, List.of(), null);
     }
 
     public PipelineOptions withEngines(String... engineIds) {
         return new PipelineOptions(input, workDir, outputDir, List.of(engineIds),
-                enableNormalization, tryAlternativeEngines, dependencyJars);
+                enableNormalization, tryAlternativeEngines, dependencyJars, waivers);
     }
 
     public PipelineOptions withNormalization(boolean enabled) {
         return new PipelineOptions(input, workDir, outputDir, engines, enabled,
-                tryAlternativeEngines, dependencyJars);
+                tryAlternativeEngines, dependencyJars, waivers);
     }
 
     public PipelineOptions withDependencies(List<Path> jars) {
         return new PipelineOptions(input, workDir, outputDir, engines, enableNormalization,
-                tryAlternativeEngines, jars);
+                tryAlternativeEngines, jars, waivers);
+    }
+
+    public PipelineOptions withWaivers(Path file) {
+        return new PipelineOptions(input, workDir, outputDir, engines, enableNormalization,
+                tryAlternativeEngines, dependencyJars, file);
     }
 }

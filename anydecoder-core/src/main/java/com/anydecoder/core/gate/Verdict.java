@@ -22,8 +22,24 @@ public enum Verdict {
     /** A difference nothing could account for, at a severity that may or may not matter. */
     SUSPECT,
 
-    /** A difference nothing could account for, at a severity that changes behaviour. */
+    /**
+     * A difference nothing could account for, at a severity that changes behaviour.
+     */
     DAMAGED,
+
+    /**
+     * A difference that was investigated and accepted, with the reason and the evidence recorded.
+     *
+     * <p>Distinct from {@link #BENIGN}, which means the <em>compiler</em> explains the difference.
+     * This means a person does: the source was deliberately changed after recovery, or the
+     * difference was looked at and judged not to matter. Both are safe; keeping them apart is the
+     * point, because one is a fact about code generation and the other is a decision somebody can
+     * be asked about.
+     *
+     * <p>Requires the waiver to state why and cite evidence. A waiver that does not is rejected
+     * before it can produce this verdict.
+     */
+    WAIVED,
 
     /**
      * The gate could not run -- a class file is missing, or a recompile failed. Not a statement
@@ -32,6 +48,6 @@ public enum Verdict {
     HARNESS_ERROR;
 
     public boolean isSafe() {
-        return this == EQUIVALENT || this == BENIGN;
+        return this == EQUIVALENT || this == BENIGN || this == WAIVED;
     }
 }

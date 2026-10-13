@@ -3,6 +3,7 @@ package com.anydecoder.core.pipeline;
 import com.anydecoder.core.build.CompileOutcome;
 import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.gate.GateReport;
+import com.anydecoder.core.gate.WaiverRegistry;
 import com.anydecoder.core.ingest.ArtifactSet;
 
 import java.nio.file.Path;
@@ -26,6 +27,7 @@ import java.util.Map;
  * @param gate               the verdicts, and the coverage behind them
  * @param rebuiltClasses     where the rebuilt class files landed
  * @param normalization      how many files each cleanup pass touched
+ * @param waivers            the investigated-and-accepted divergences applied to this gate run
  */
 public record PipelineOutcome(
         ArtifactSet artifacts,
@@ -37,7 +39,8 @@ public record PipelineOutcome(
         List<EngineSubstitution.Attempt> substitutions,
         GateReport gate,
         Path rebuiltClasses,
-        Map<String, Integer> normalization) {
+        Map<String, Integer> normalization,
+        WaiverRegistry waivers) {
 
     /** Sources that made it into the rebuild. */
     public int compiledSourceCount() {

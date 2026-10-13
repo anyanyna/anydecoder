@@ -7,6 +7,8 @@ import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
 import com.anydecoder.core.gate.GateReport;
 import com.anydecoder.core.gate.Verdict;
+import com.anydecoder.core.gate.Waiver;
+import com.anydecoder.core.gate.WaiverRegistry;
 import com.anydecoder.core.pipeline.EngineSubstitution;
 import com.anydecoder.core.pipeline.PipelineOutcome;
 
@@ -110,6 +112,7 @@ public final class GateReportWriter {
         }
 
         appendEngineSubstitutions(sb, outcome);
+        appendWaivers(sb, outcome);
         appendThrowsAdvisory(sb, report);
 
         sb.append("## Build\n\n");
@@ -227,6 +230,60 @@ public final class GateReportWriter {
             sb.append("- ... and ").append(affected.size() - 40).append(" more\n");
         }
         sb.append('\n');
+    }
+
+    /**
+     * Divergences accepted on the record, and waivers that no longer apply.
+     *
+     * <p>Separate from the compiler-artefact section on purpose. {@code BENIGN} means code
+     * generation explains the difference; a waiver means a person decided it does not matter.
+     * Both are safe, and conflating them would hide which of the two a reader is looking at —
+     * one is a fact about compilers, the other a decision that can be argued with.
+     */
+    private static void appendWaivers(StringBuilder sb, PipelineOutcome outcome) {
+        WaiverRegistry waivers = outcome.waivers();
+        if (waivers == null || (waivers.size() == 0 && waivers.rejected().isEmpty())) {
+            return;
+        }
+
+        List<ClassVerdict> accepted = outcome.gate().waived();
+        if (!accepted.isEmpty()) {
+            sb.append("## Accepted by a recorded waiver\n\n");
+            sb.append("Investigated, and the difference accepted on the record. **Not the same as")
+                    .append(" `BENIGN`**: that means a compiler artefact explains a difference,")
+                    .append(" this means somebody decided it does not matter. The reason and the")
+                    .append(" evidence are shown so a decision can be challenged without redoing")
+                    .append(" the investigation.\n\n");
+            for (ClassVerdict verdict : accepted.stream().limit(60).toList()) {
+                sb.append("- `").append(verdict.className().replace('/', '.')).append("`\n");
+                verdict.explanations().stream()
+                        .filter(e -> e.category().equals("WAIVED_BY_RECORD"))
+                        .forEach(e -> sb.append("  - ").append(e.reason()).append('\n'));
+            }
+            if (accepted.size() > 60) {
+                sb.append("- ... and ").append(accepted.size() - 60).append(" more\n");
+            }
+            sb.append('\n');
+        }
+
+        List<Waiver> stale = waivers.stale();
+        if (!stale.isEmpty()) {
+            sb.append("## Waivers that now match nothing\n\n");
+            sb.append("The difference each covered is gone, so the entry can be deleted.\n\n");
+            stale.forEach(w -> sb.append("- `").append(w.className().replace('/', '.'))
+                    .append("` (").append(String.join(", ", w.signalList())).append(")\n"));
+            sb.append('\n');
+        }
+
+        List<WaiverRegistry.Rejected> refused = waivers.rejected();
+        if (!refused.isEmpty()) {
+            sb.append("## Waivers refused\n\n");
+            sb.append("An entry has to say why and cite evidence; these did not, so they were")
+                    .append(" **not** applied.\n\n");
+            refused.forEach(r -> sb.append("- `").append(r.className().replace('/', '.'))
+                    .append("` — ").append(r.reason()).append(" (").append(r.source()).append(")\n"));
+            sb.append('\n');
+        }
     }
 
     private static final Map<String, String> CAUSE = Map.of(
@@ -381,6 +438,21 @@ public final class GateReportWriter {
                 .toList());
 
         root.put("cleanupPasses", new LinkedHashMap<String, Object>(outcome.normalization()));
+
+        if (outcome.waivers() != null && (outcome.waivers().size() > 0
+                || !outcome.waivers().rejected().isEmpty())) {
+            root.put("waivers", Map.of(
+                    "loaded", outcome.waivers().size(),
+                    "accepted", outcome.gate().waived().stream()
+                            .map(ClassVerdict::className).toList(),
+                    "matchedNothing", outcome.waivers().stale().stream()
+                            .map(w -> Map.of("class", w.className(), "signals", w.signalList()))
+                            .toList(),
+                    "refused", outcome.waivers().rejected().stream()
+                            .map(r -> Map.of("class", r.className(),
+                                    "problem", r.reason(), "where", r.source()))
+                            .toList()));
+        }
 
         return Json.write(root);
     }

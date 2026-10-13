@@ -268,6 +268,62 @@ Artifacts from the report that make verdicts auditable:
   coverage than at 100%;
 - `HARNESS_ERROR` is counted separately and never as a pass.
 
+## Recording a divergence as accepted
+
+Some divergences are correct and permanent. Source deliberately changed after recovery differs
+from the original by design, and no amount of investigating will make the gate stop saying so.
+
+Left alone, that is corrosive: a gate that keeps naming classes somebody has already cleared
+trains its readers to ignore it. The alternative is to record the decision.
+
+```
+anydecoder gate <original-classes> <classes-dir> --waivers anydecoder-waivers.md
+```
+
+`anydecoder-waivers.md` beside the original classes is picked up without being named. It is a
+Markdown table, so it reads as documentation and parses as data:
+
+```markdown
+| class | signal | reason | evidence |
+|---|---|---|---|
+| com/example/Foo | excp | local auth added after recovery | commit 03433271, not a decompilation defect |
+| com/example/Bar | invokes, consts | adjacent string folding | `javap -c`: `ldc "a"; ldc "b"; append` becomes `ldc "ab"` |
+```
+
+`signal` may list several, comma separated, or `*` for every signal on the class. Either class-name
+notation works, `com/example/Foo` or `com.example.Foo`.
+
+**A waiver must state why and cite evidence, or it is refused.** This is the entire point. A list
+of class names saying "we looked at this" reads exactly like a list of class names saying "we gave
+up", and only one of those is worth keeping. An entry missing either is not applied, and is
+reported under *Waivers refused* with its line number.
+
+Matching is **per class and per signal, never per class alone**. A class can carry a waived
+difference in one signal and an unwaived one in another, and a looser match would hide the second.
+Waiving `fields` on a class whose exception table also changed leaves it `DAMAGED`.
+
+### The verdict it produces
+
+A class whose remaining differences are all waived becomes **`WAIVED`**, which is safe and does
+not appear in the review list. It is deliberately not the same as `BENIGN`:
+
+| Verdict | Means |
+|---|---|
+| `BENIGN` | code generation explains the difference — a fact about compilers |
+| `WAIVED` | a person decided the difference does not matter — a decision, with a reason and evidence attached |
+
+Conflating them would hide which of the two a reader is looking at, and one of them can be argued
+with.
+
+### Keeping the list honest
+
+Two things are reported that a plain list would not give you:
+
+- **Waivers that now match nothing.** The difference they covered is gone, so the entry can be
+  deleted. A list that only grows stops being read.
+- **Waivers refused**, with the line number, so a malformed entry is a bug report rather than
+  silence.
+
 ## Blind spots
 
 **Two independent statements of the same kind, swapped in order, produce identical signals.** An

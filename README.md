@@ -152,6 +152,30 @@ A class in this state is reported `BENIGN`, never `EQUIVALENT`. Both are safe; k
 means a reader can tell which classes were checked and matched from which were found to differ and
 explained.
 
+### Recording a divergence as accepted
+
+Some divergences are correct and permanent — source deliberately changed after recovery differs
+from the original by design, and no amount of investigating changes that. Left unrecorded, the
+gate keeps naming classes somebody has already cleared, which trains its readers to ignore it.
+
+So a decision can be recorded, in a Markdown table:
+
+```markdown
+| class | signal | reason | evidence |
+|---|---|---|---|
+| com/example/Foo | excp | local auth added after recovery | commit 03433271 |
+```
+
+**An entry must state why and cite evidence, or it is refused and reported.** A list of class
+names saying "we looked at this" reads exactly like one saying "we gave up", and only one of those
+is worth having. Matching is per class *and* per signal, so waiving one difference never hides
+another.
+
+A class whose remaining differences are all waived is reported `WAIVED` — safe, and deliberately
+distinct from `BENIGN`, because one is a fact about compilers and the other is a decision that can
+be argued with. Waivers that no longer match anything are reported too, since a list that only
+grows stops being read. See [docs/verification.md](docs/verification.md#recording-a-divergence-as-accepted).
+
 ### Differential testing
 
 The static gate compares structure, so two statements of the same kind swapped in order are
