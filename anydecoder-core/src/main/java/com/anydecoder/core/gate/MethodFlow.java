@@ -49,14 +49,38 @@ public final class MethodFlow {
      * @param from    the instruction whose successors to start from
      * @param blocked an instruction to treat as removed, or {@link Insn#NO_TARGET} for none
      */
-    public BitSet reachableFrom(int from, int blocked) {
+    /**
+     * The instructions a store can reach along paths that run no other store of the same set.
+     *
+     * <p>This is what separates the two shapes that look alike and are not. A field assigned
+     * inside each arm of a conditional and once at the join is safe: on any path exactly one of
+     * those stores runs. A field assigned twice on one path, with a read between, is not, because
+     * the read sees a value a later store is about to overwrite.
+     *
+     * <p>Reachability that merely stops at the <em>last</em> store cannot tell them apart — a
+     * store in one arm can reach the next loop iteration's read without passing through a store in
+     * the other arm, which looks like an intermediate value and is not. Stopping at any store of
+     * the set does tell them apart, because in the safe shape no path runs two of them.
+     *
+     * @param start the instruction to start from
+     * @param set   instructions to treat as removed, other than {@code start}; all of them must
+     *              still be reachable from {@code start} for the answer to mean anything, which
+     *              {@link #allReachableFrom} checks
+     */
+    public BitSet reachableBlockedBy(int start, BitSet set) {
+        BitSet blocked = (BitSet) set.clone();
+        blocked.clear(start);
+        return search(start, blocked);
+    }
+
+    private BitSet search(int start, BitSet blocked) {
         BitSet seen = new BitSet(instructions.size());
-        if (from < 0 || from >= instructions.size()) {
+        if (start < 0 || start >= instructions.size()) {
             return seen;
         }
         Deque<Integer> pending = new ArrayDeque<>();
-        for (int next : successors(from)) {
-            if (next != blocked) {
+        for (int next : successors(start)) {
+            if (!blocked.get(next)) {
                 pending.add(next);
             }
         }
@@ -67,7 +91,7 @@ public final class MethodFlow {
             }
             seen.set(node);
             for (int next : successors(node)) {
-                if (next != blocked && !seen.get(next)) {
+                if (!blocked.get(next) && !seen.get(next)) {
                     pending.add(next);
                 }
             }

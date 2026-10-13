@@ -103,7 +103,12 @@ class FieldStoreHoistingTest {
                     ? Integer.parseInt(item.substring(item.indexOf(':') + 1))
                     : Insn.NO_TARGET;
             switch (name) {
-                case "ifeq", "ifnull", "goto" -> instructions.add(
+                // `goto` is a real GOTO, not a conditional with the same target: a conditional
+                // falls through to the next instruction as well, which would make two stores in
+                // separate arms reach each other and quietly change what the test is exercising.
+                case "goto" -> instructions.add(
+                        new Insn(Opcodes.GOTO, "goto", "", target, false));
+                case "ifeq", "ifnull" -> instructions.add(
                         new Insn(Opcodes.IFEQ, name, "", target, false));
                 case "putfield" -> instructions.add(
                         new Insn(Opcodes.PUTFIELD, "putfield", FIELD, false));

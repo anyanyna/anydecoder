@@ -578,16 +578,32 @@ public final class BenignDivergenceClassifier {
         if (stores.isEmpty()) {
             return false;
         }
-        if (reads.isEmpty()) {
+        if (reads.isEmpty() || stores.size() == 1) {
             return true;
         }
 
-        int lastStore = stores.get(stores.size() - 1);
+        java.util.BitSet storeSet = new java.util.BitSet(insns.size());
+        stores.forEach(storeSet::set);
+        java.util.BitSet nothing = new java.util.BitSet(insns.size());
+
+        // The stores have to be alternatives, one per path. If any store can reach another then
+        // some path runs two of them, the search below would be cut short at the second one and
+        // would stop seeing what happens after it — an under-approximation, which is the one
+        // direction this analysis must never err in.
         for (int store : stores) {
-            if (store == lastStore) {
-                continue;
+            java.util.BitSet plain = flow.reachableBlockedBy(store, nothing);
+            for (int other : stores) {
+                if (other != store && plain.get(other)) {
+                    return false;
+                }
             }
-            java.util.BitSet reached = flow.reachableFrom(store, lastStore);
+        }
+
+        // With one store per path, a read is only observable as an intermediate value if a
+        // *later* store overwrites it first. So: from each store, following control without
+        // running another store, no read of the field may be reached.
+        for (int store : stores) {
+            java.util.BitSet reached = flow.reachableBlockedBy(store, storeSet);
             for (int read : reads) {
                 if (reached.get(read)) {
                     return false;
