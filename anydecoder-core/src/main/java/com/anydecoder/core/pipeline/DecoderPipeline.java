@@ -325,10 +325,39 @@ public final class DecoderPipeline {
             ClassModel from = ClassModelReader.read(original);
             ClassModel to = ClassModelReader.read(rebuilt);
             return gate.compare(from, to);
-        } catch (Exception e) {
-            return ClassVerdict.harnessError(className,
-                    "could not read a class file: " + e.getMessage());
+        } catch (Throwable t) {
+            // Throwable, not Exception. The realistic failure here is not a malformed class file
+            // but the run having exhausted its heap, which arrives as an Error -- and it arrives
+            // one class at a time, out of a parallel stream, so the first one to fail takes the
+            // whole run down with a message about a class that is not the problem. Measured on a
+            // real project: 2394 classes built, then gating died with
+            // `NoClassDefFoundError: org/objectweb/asm/Handle` for a class that was in the jar.
+            return ClassVerdict.harnessError(className, describeHarnessFailure(t));
         }
+    }
+
+    /**
+     * What to say about a class the harness could not get through.
+     *
+     * <p>Memory exhaustion is named explicitly and with the remedy, because the error it produces
+     * does not look like one. A failed class load is reported later as a missing class, and a
+     * reader chasing that has no way to find the heap.
+     */
+    private static String describeHarnessFailure(Throwable t) {
+        if (hasMemoryPressure(t)) {
+            return "the run ran out of heap while reading this class; raise -Xmx on the launcher"
+                    + " and try again -- a project of a few thousand classes needs more than 4GB";
+        }
+        return "could not read a class file: " + t;
+    }
+
+    private static boolean hasMemoryPressure(Throwable t) {
+        for (Throwable cause = t; cause != null; cause = cause.getCause()) {
+            if (cause instanceof OutOfMemoryError) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Decompiler engineFor(String id) {

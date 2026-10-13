@@ -72,6 +72,26 @@ java -jar anydecoder-cli/target/anydecoder.jar run path/to/classes \
 You get `recovered/report.md`, `recovered/report.json`, and the source tree under
 `recovered/work/src-cfr`.
 
+### Give it memory
+
+Give the launcher more heap than you would expect. Compiling a decompiled tree happens in-process
+on the whole tree at once, and the peel repeats that until it converges, so the peak is a
+property of the project rather than of the largest class:
+
+```bash
+java -Xmx8g -jar anydecoder-cli/target/anydecoder.jar run <classes> -o recovered
+```
+
+A few thousand classes needs more than 4 GB. Under-provisioning does not fail cleanly: the run
+exhausts its heap one class at a time inside a parallel stream, and what surfaces is an error
+about a class file rather than about memory. anydecoder recognises that case and says so, but the
+heap still has to be raised.
+
+Each decompiler runs as its own process with its own heap, set separately with
+`-Danydecoder.engine.heap` — Vineflower builds a whole-project view and wants more than the
+others. An engine that exhausts its memory is reported and stepped over rather than ending the
+run.
+
 Re-check after editing, without decompiling again:
 
 ```bash
