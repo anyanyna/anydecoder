@@ -251,6 +251,50 @@ than by reasoning about it:
 Both were latent until the tree was compiled with its original compiler, where the remaining
 differences are few enough that a wrong one stands out.
 
+## 6. Working the list down, and the four mechanisms it produced
+
+The recovered source was gated against the originals on **commit `0e91a4ef`** — the tree as
+recovered, before any hand-editing — compiled with JDK 8, the compiler generation that built the
+originals.
+
+| | start | end |
+|---|---:|---:|
+| EQUIVALENT | 2820 | 2820 |
+| BENIGN | 28 | 43 |
+| SUSPECT | 86 | 87 |
+| **WAIVED** | — | **2** |
+| **DAMAGED** | **28** | **10** |
+
+Four mechanisms accounted for most of the reduction, and each became a gate category or a
+normalisation rather than a per-class waiver:
+
+| Mechanism | What it costs if not handled | Classes |
+|---|---|---:|
+| Adjacent string literals folded | one cause arriving as `consts`, `invokes` and `instrCount` — three investigations | 12 |
+| An appended empty literal | `append("")` cannot change the result, but the newer compiler emits it | — |
+| Boxing alongside a narrowed receiver | the boxing rule compared raw target strings, so a `List`/`ArrayList` receiver counted as a difference and the rule gave up | 10 |
+| `String.valueOf(primitive)` against `String.valueOf(Object)` | a boxed local turns one into the other; same string either way | 1 |
+
+The first two share an arithmetic: every fold removes two instructions, every empty append adds
+two, and the rule refuses unless the delta matches exactly. That is what keeps it a test rather
+than a resemblance.
+
+**Eight real defects** were found, all confirmed by reading the bytecode: a tautological
+`version.equals(version)`, a `remove(int)` that became `remove(Object)`, four nested classes whose
+explicit `public` constructor was dropped, a log literal truncated from `集合深拷贝错误:` to
+`深拷贝错误:`, and a dead local the decompiler hoisted out of a `synchronized` monitor expression.
+
+**All eight are still reported at every stage of this work.** That is the property that had to
+survive: a category that accounts for more is a category that can hide more, so each new one was
+tested against a case it must not excuse — folding refused when the instruction arithmetic does
+not fit, a changed literal not excused by a merge, boxing refused when a call genuinely moved.
+
+Two classes were waived rather than fixed, with the mechanism and the observation recorded: a
+static call made through an instance expression whose qualifier javac evaluates and discards, and
+a rotated loop. One class is left **unresolved** — its count differences are consistent with a
+`finally` body inlined once per completion path, and consistent is not the same as checked, so it
+stays on the list.
+
 ## Reproducing
 
 Neither corpus nor compiled historical source is vendored here. Point the scripts at your own
