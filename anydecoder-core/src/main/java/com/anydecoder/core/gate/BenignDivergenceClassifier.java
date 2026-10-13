@@ -716,9 +716,33 @@ public final class BenignDivergenceClassifier {
             if (isBoxingCall(insn.operand()) || isConcatCall(insn.operand())) {
                 continue;
             }
-            out.add(insn.operand());
+            out.add(canonicalStringValueOf(insn.operand()));
         }
         return out;
+    }
+
+    /**
+     * Folds {@code String.valueOf} of a primitive into the {@code Object} form.
+     *
+     * <p>A local declared as {@code Integer} where the source had {@code int} changes
+     * {@code String.valueOf(int)} into {@code String.valueOf(Object)} — the same string either
+     * way, because the box's {@code toString} produces the primitive's text.
+     *
+     * <p>{@code String.valueOf(char[])} is deliberately <b>not</b> folded. It returns the
+     * characters of the array where the {@code Object} overload returns the array's identity, so
+     * the two are not interchangeable and treating them as such would hide a real change. That
+     * distinction is the reason this is a list of primitives rather than a catch-all.
+     */
+    private static String canonicalStringValueOf(String callee) {
+        if (!callee.startsWith("java/lang/String.valueOf(")) {
+            return callee;
+        }
+        String parameters = callee.substring(callee.indexOf('(') + 1, callee.indexOf(')'));
+        boolean singlePrimitive = parameters.length() == 1
+                && "IJFDZBCS".indexOf(parameters.charAt(0)) >= 0;
+        return singlePrimitive
+                ? "java/lang/String.valueOf(Ljava/lang/Object;)Ljava/lang/String;"
+                : callee;
     }
 
     /**
