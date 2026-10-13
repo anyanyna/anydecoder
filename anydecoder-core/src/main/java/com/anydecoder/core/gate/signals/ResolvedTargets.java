@@ -46,9 +46,38 @@ import java.util.TreeSet;
  * counterpart is a call on something else. Those stay differences, and a count difference is
  * reported at whatever severity the calling signal chooses for it.
  */
-final class ResolvedTargets {
+public final class ResolvedTargets {
 
     private ResolvedTargets() {
+    }
+
+    /**
+     * Whether two lists of resolved references correspond exactly, allowing for a receiver or a
+     * return type reached through a related class.
+     *
+     * <p>For a caller that has already set some differences aside — the boxing classifier, which
+     * removes the box and unbox calls and then asks whether everything else still lines up. It has
+     * to ask that question through the same hierarchy reasoning as the signal does; comparing the
+     * raw strings would report a narrowed receiver as a difference and make the classifier give
+     * up on a class it could have accounted for.
+     */
+    public static boolean match(List<String> original, List<String> rebuilt, HierarchyIndex hierarchy) {
+        if (Objects.equals(sorted(original), sorted(rebuilt))) {
+            return true;
+        }
+        Map<String, List<Target>> left = bySignature(original);
+        Map<String, List<Target>> right = bySignature(rebuilt);
+        Set<String> allSignatures = new LinkedHashSet<>(left.keySet());
+        allSignatures.addAll(right.keySet());
+        for (String signature : allSignatures) {
+            List<Target> a = new ArrayList<>(left.getOrDefault(signature, List.of()));
+            List<Target> b = new ArrayList<>(right.getOrDefault(signature, List.of()));
+            pairRelated(a, b, hierarchy);
+            if (!a.isEmpty() || !b.isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

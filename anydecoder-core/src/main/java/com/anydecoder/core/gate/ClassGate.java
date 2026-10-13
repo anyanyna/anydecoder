@@ -38,8 +38,11 @@ import java.util.Set;
 public final class ClassGate {
 
     private final List<Signal> methodSignals;
+    /** Kept so the benign classifier can ask the same hierarchy question the signals do. */
+    private final HierarchyIndex hierarchy;
 
     public ClassGate(HierarchyIndex hierarchy) {
+        this.hierarchy = hierarchy;
         this.methodSignals = List.of(
                 new ExceptionTableSignal(),
                 new AthrowSignal(),
@@ -88,7 +91,7 @@ public final class ClassGate {
 
             BenignDivergenceClassifier.Result result =
                     BenignDivergenceClassifier.classify(original, rebuilt, method, counterpart,
-                            methodDivergences);
+                            hierarchy, methodDivergences);
             explanations.addAll(result.explanations());
             unexplained.addAll(result.unexplained());
         }

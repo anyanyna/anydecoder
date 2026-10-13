@@ -1,6 +1,7 @@
 package com.anydecoder.core.gate;
 
 import com.anydecoder.core.gate.signals.Multisets;
+import com.anydecoder.core.gate.signals.ResolvedTargets;
 import org.objectweb.asm.Opcodes;
 
 import java.util.ArrayList;
@@ -48,6 +49,7 @@ public final class BenignDivergenceClassifier {
 
     public static Result classify(ClassModel originalClass, ClassModel rebuiltClass,
                                   MethodModel original, MethodModel rebuilt,
+                                  HierarchyIndex hierarchy,
                                   List<Divergence> divergences) {
         List<Divergence> blocking = divergences.stream()
                 .filter(d -> d.severity() != Severity.ADVISORY)
@@ -60,11 +62,237 @@ public final class BenignDivergenceClassifier {
         tryExplainBooleanMaterialization(original, rebuilt, blocking, unexplained, explanations);
         tryExplainMissingIincOptimization(original, rebuilt, blocking, unexplained, explanations);
         tryExplainFieldStoreHoisting(original, rebuilt, blocking, unexplained, explanations);
-        tryExplainBoxing(original, rebuilt, blocking, unexplained, explanations);
+        tryExplainBoxing(original, rebuilt, blocking, unexplained, explanations, hierarchy);
         tryExplainEnumInitialization(originalClass, rebuiltClass, original, blocking,
                 unexplained, explanations);
+        tryExplainStringLiteralFolding(original, rebuilt, unexplained, explanations);
 
         return new Result(unexplained.isEmpty(), explanations, unexplained);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Two adjacent string literals, folded into one by one compiler and not by the other.
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Excuses the constant, call and size differences produced by folding `"a" + "b"`.
+     *
+     * <p>Where both operands of a concatenation are compile-time constants, a compiler may emit
+     * one literal or two. Measured on the corpus, the original has
+     *
+     * <pre>
+     *   38: ldc  "/ui/…/reconciliation.zul"     43: ldc  "?openWindow=1\")"
+     *   40: append                               45: append
+     * </pre>
+     *
+     * and the rebuild has
+     *
+     * <pre>
+     *   38: ldc  "/ui/…/reconciliation.zul?openWindow=1\")"
+     *   40: append
+     * </pre>
+     *
+     * The concatenated runtime string is identical. It shows up as three separate signals —
+     * `consts` for the differing literals, `invokes` for the missing `append`, `instrCount` for
+     * the two instructions — so leaving it to the classifier's usual per-signal reasoning would
+     * mean three investigations for one cause. This is the largest single source of `consts`
+     * findings on the corpus.
+     *
+     * <p>The evidence is a merge: the original's appended-literal sequence has to reduce to the
+     * rebuild's by concatenating adjacent entries, and each merge has to account for exactly two
+     * instructions. That is an exact test, not a similarity — a coincidental match would have to
+     * reproduce both the literals and the instruction delta.
+     */
+    private static void tryExplainStringLiteralFolding(
+            MethodModel original, MethodModel rebuilt,
+            List<Divergence> unexplained, List<Explanation> explanations) {
+
+        Appends before = appendTokens(original);
+        Appends after = appendTokens(rebuilt);
+        int merges = countMerges(before.tokens(), after.tokens());
+        if (merges < 0) {
+            return;
+        }
+        int instructionDelta = original.instructions().size() - rebuilt.instructions().size();
+        // Two things are accounted for, and the arithmetic has to fit both at once:
+        //   folding      -- merging two literals drops the second literal and its append: two
+        //                   more instructions in whichever side has them separate
+        //   empty append -- `append("")` is a no-op at runtime and one compiler emits it where
+        //                   the other does not: two instructions per occurrence
+        int expected = 2 * merges - 2 * (after.emptyAppends() - before.emptyAppends());
+        if (instructionDelta != expected) {
+            return;
+        }
+        if (merges == 0 && after.emptyAppends() == before.emptyAppends()) {
+            return;   // nothing here to account for
+        }
+        // Everything that is not an appended literal has to line up, or the difference is not
+        // only this.
+        if (!otherConstantsMatch(original, rebuilt)) {
+            return;
+        }
+
+        List<Divergence> explained = new ArrayList<>();
+        for (Divergence divergence : unexplained) {
+            if (divergence.signalId().equals("consts")
+                    || divergence.signalId().equals("invokes")
+                    || divergence.signalId().equals("instrCount")) {
+                explained.add(divergence);
+            }
+        }
+        if (explained.isEmpty()) {
+            return;
+        }
+        unexplained.removeAll(explained);
+        explanations.add(new Explanation(
+                "STRING_LITERAL_FOLDING",
+                describeFolding(merges, before.emptyAppends(), after.emptyAppends()),
+                explained.stream().map(Divergence::signalId).distinct().toList()));
+    }
+
+    private static String describeFolding(int merges, int emptiesBefore, int emptiesAfter) {
+        List<String> parts = new ArrayList<>();
+        if (merges > 0) {
+            parts.add("folds " + merges + " pair(s) of adjacent string literals into one, which"
+                    + " removes the second literal and its append; the concatenated runtime"
+                    + " string is unchanged");
+        }
+        if (emptiesBefore != emptiesAfter) {
+            parts.add((emptiesAfter > emptiesBefore ? "adds " : "drops ")
+                    + Math.abs(emptiesAfter - emptiesBefore)
+                    + " append of an empty literal, which contributes nothing to the result");
+        }
+        return "the rebuild " + String.join("; and ", parts);
+    }
+
+    /**
+     * The string appends in a method: which literals they appended, in order, with the appends of
+     * an empty literal counted separately.
+     *
+     * <p>Empty appended literals are removed from the sequence because {@code append("")} cannot
+     * change the resulting string. They are counted rather than discarded so the instruction
+     * arithmetic stays exact — dropping one removes two instructions, and a rule that ignored
+     * that would excuse a size difference it has not accounted for.
+     *
+     * <p>Computed arguments are kept as placeholders so the two sequences stay aligned. Dropping
+     * them would let an unrelated append slide into a neighbouring position and make the merge
+     * check succeed on a pair that does not correspond.
+     */
+    private record Appends(List<String> tokens, int emptyAppends) {
+    }
+
+    private static Appends appendTokens(MethodModel method) {
+        List<Insn> insns = method.instructions();
+        List<String> tokens = new ArrayList<>();
+        int empties = 0;
+        for (int i = 0; i < insns.size(); i++) {
+            Insn insn = insns.get(i);
+            int op = insn.opcode();
+            if (op < Opcodes.INVOKEVIRTUAL || op > Opcodes.INVOKEDYNAMIC
+                    || !isStringAppend(insn.operand())) {
+                continue;
+            }
+            String token = literalBefore(insns, i);
+            if (token.equals("LIT:")) {
+                empties++;
+                continue;
+            }
+            tokens.add(token);
+        }
+        return new Appends(tokens, empties);
+    }
+
+    private static boolean isStringAppend(String callee) {
+        boolean concatOwner = callee.startsWith("java/lang/StringBuilder.")
+                || callee.startsWith("java/lang/StringBuffer.");
+        return concatOwner && callee.contains(".append(Ljava/lang/String;)");
+    }
+
+    /** The string literal a call's argument was, when the instruction before it pushed one. */
+    private static String literalBefore(List<Insn> insns, int callIndex) {
+        if (callIndex == 0) {
+            return "EXPR";
+        }
+        Insn previous = insns.get(callIndex - 1);
+        if (!"ldc".equals(previous.mnemonic()) || !previous.operand().startsWith("String:")) {
+            return "EXPR";
+        }
+        return "LIT:" + previous.operand().substring("String:".length());
+    }
+
+    /**
+     * How many adjacent literal pairs the first sequence has to merge to become the second, or
+     * -1 when no such account exists.
+     */
+    private static int countMerges(List<String> before, List<String> after) {
+        int i = 0;
+        int j = 0;
+        int merges = 0;
+        while (i < before.size() && j < after.size()) {
+            if (before.get(i).equals(after.get(j))) {
+                i++;
+                j++;
+                continue;
+            }
+            if (!after.get(j).startsWith("LIT:")) {
+                return -1;
+            }
+            String target = after.get(j).substring("LIT:".length());
+            StringBuilder accumulated = new StringBuilder();
+            int start = i;
+            boolean matched = false;
+            while (i < before.size() && before.get(i).startsWith("LIT:")) {
+                accumulated.append(before.get(i).substring("LIT:".length()));
+                i++;
+                // Two or more literals must be involved: one literal becoming itself is not a fold.
+                if (i - start >= 2 && accumulated.toString().equals(target)) {
+                    matched = true;
+                    break;
+                }
+                if (accumulated.length() >= target.length()) {
+                    break;
+                }
+            }
+            if (!matched) {
+                return -1;
+            }
+            merges++;
+            j++;
+        }
+        if (i != before.size() || j != after.size()) {
+            return -1;
+        }
+        return merges;
+    }
+
+    /** The constants that are not appended literals, which folding must leave untouched. */
+    private static boolean otherConstantsMatch(MethodModel original, MethodModel rebuilt) {
+        return otherConstants(original).equals(otherConstants(rebuilt));
+    }
+
+    private static Map<String, Integer> otherConstants(MethodModel method) {
+        List<Insn> insns = method.instructions();
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < insns.size(); i++) {
+            Insn insn = insns.get(i);
+            if (!isConstantPush(insn)) {
+                continue;
+            }
+            boolean appendedLiteral = insn.operand().startsWith("String:")
+                    && i + 1 < insns.size()
+                    && isStringAppend(insns.get(i + 1).operand());
+            if (!appendedLiteral) {
+                counts.merge(insn.operand(), 1, Integer::sum);
+            }
+        }
+        return counts;
+    }
+
+    private static boolean isConstantPush(Insn insn) {
+        return switch (insn.mnemonic()) {
+            case "ldc", "iconst", "lconst", "fconst", "dconst", "aconst_null", "push" -> true;
+            default -> false;
+        };
     }
 
     // ------------------------------------------------------------------------------------------
@@ -428,7 +656,8 @@ public final class BenignDivergenceClassifier {
 
     private static void tryExplainBoxing(
             MethodModel original, MethodModel rebuilt, List<Divergence> blocking,
-            List<Divergence> unexplained, List<Explanation> explanations) {
+            List<Divergence> unexplained, List<Explanation> explanations,
+            HierarchyIndex hierarchy) {
 
         if (find(unexplained, "invokes") == null) {
             return;
@@ -438,24 +667,20 @@ public final class BenignDivergenceClassifier {
         if (a.equals(b)) {
             return;
         }
-        // Every non-boxing call must still line up, otherwise this is not a boxing artefact.
-        Map<String, Integer> aAll = Multisets.counts(nonBoxingCalls(original), s -> s);
-        Map<String, Integer> bAll = Multisets.counts(nonBoxingCalls(rebuilt), s -> s);
-        if (!aAll.equals(bAll)) {
-            return;
-        }
-
         int boxingOriginal = boxingCalls(original).size();
         int boxingRebuilt = boxingCalls(rebuilt).size();
         int boxingDelta = Math.abs(boxingRebuilt - boxingOriginal);
         if (boxingDelta == 0) {
             return;
         }
-        // A box or unbox is one instruction, so the body can only have grown or shrunk in step
-        // with the boxing traffic. Without this bound the category would excuse any size change
-        // in a method that happened to differ in one box call -- which is the kind of
-        // unearned exemption the whole classifier is meant to avoid.
-        // No instruction-count bound here: other patterns present in the same method move it
+        // Every non-boxing call must still line up — and the question has to be asked through the
+        // same hierarchy reasoning the signal uses. Comparing the raw strings counted a receiver
+        // narrowed from `List` to `ArrayList` as a difference, which made this rule give up on
+        // classes it could have accounted for.
+        if (!ResolvedTargets.match(nonBoxingCalls(original), nonBoxingCalls(rebuilt), hierarchy)) {
+            return;
+        }
+        // No instruction-count bound is needed: other patterns present in the same method move it
         // too, and the substantive test is that every non-boxing call still lines up.
 
         Divergence target = find(unexplained, "invokes");
