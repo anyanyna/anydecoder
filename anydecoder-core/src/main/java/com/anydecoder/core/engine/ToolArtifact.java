@@ -18,8 +18,8 @@ public record ToolArtifact(
         String mavenPath,
         String resourcePath) {
 
-    /** {@code ~/.anydecoder/tools/<file>} */
-    public java.nio.file.Path cachePath(java.nio.file.Path home) {
-        return home.resolve(".anydecoder").resolve("tools").resolve(fileName);
+    /** {@code <toolsDir>/<file>}. The caller owns where that directory is. */
+    public java.nio.file.Path pathIn(java.nio.file.Path toolsDirectory) {
+        return toolsDirectory.resolve(fileName);
     }
 }

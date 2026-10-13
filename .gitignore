@@ -27,6 +27,13 @@ validation/*
 .classpath
 .project
 
+# Machine-local Maven configuration. maven.config points at maven-settings.xml, which mirrors
+# every repository to Maven Central because this machine's Maven installation redefines `central`
+# as an unreachable internal Nexus. Committing it would override a contributor's own mirror,
+# which is not this project's business to do.
+.mvn/maven.config
+.mvn/maven-settings.xml
+
 # OS
 .DS_Store
 Thumbs.db

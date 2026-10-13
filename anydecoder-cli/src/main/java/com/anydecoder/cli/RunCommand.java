@@ -67,6 +67,24 @@ public final class RunCommand implements Callable<Integer> {
                     + " Discovery already finds a lib/ directory beside the classes.")
     private List<Path> dependencies;
 
+    /**
+     * Where the engine jars are extracted to.
+     *
+     * <p>Beside the run's scratch space rather than in the user's home directory. The engines ship
+     * inside anydecoder's own artifact, so the first run copies about five megabytes out of it;
+     * putting that under {@code ~/.anydecoder/tools} means a project kept entirely on a second
+     * drive still causes something to accumulate on the system drive. Keeping it here makes the
+     * whole invocation self-contained in the directories the caller chose.
+     *
+     * <p>Set {@code -Danydecoder.tools} to put it anywhere else and share one copy between runs.
+     */
+    private static Path toolsDirectory(Path workDir) {
+        String configured = System.getProperty("anydecoder.tools");
+        return configured != null && !configured.isBlank()
+                ? Path.of(configured)
+                : workDir.resolve(".tools");
+    }
+
     @Override
     public Integer call() throws Exception {
         Path resolvedOutput = output != null ? output : Path.of("anydecoder-out");
@@ -82,7 +100,7 @@ public final class RunCommand implements Callable<Integer> {
                 dependencies == null ? List.of() : dependencies.stream()
                         .map(Path::toAbsolutePath).toList());
 
-        ToolCache cache = new ToolCache(Path.of(System.getProperty("user.home")),
+        ToolCache cache = new ToolCache(toolsDirectory(resolvedWork),
                 java.util.Optional.ofNullable(tools));
 
         PrintStream log = System.out;

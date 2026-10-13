@@ -17,7 +17,7 @@ import java.util.Optional;
  *
  * <ol>
  *   <li>an explicit path the caller configured;</li>
- *   <li>an earlier run's copy in {@code ~/.anydecoder/tools/};</li>
+ *   <li>an earlier run's copy in the tools directory;</li>
  *   <li>the copy bundled inside anydecoder's own artifact, extracted on first use;</li>
  *   <li>a download from Maven Central.</li>
  * </ol>
@@ -25,22 +25,28 @@ import java.util.Optional;
  * <p>Bundling means a normal install never reaches step four, and pinning the version in the
  * artifact means every user of a given anydecoder release decompiles with the same engine --
  * which matters, because engine behaviour is one of the things the gate's verdicts depend on.
+ *
+ * <p><b>Where the tools directory is.</b> The caller decides. The command line puts it beside the
+ * run's scratch space rather than in the user's home directory, so a project kept on another
+ * drive never causes anything to accumulate on the system drive. Nothing here assumes a home
+ * directory exists or is writable.
  */
 public final class ToolCache {
 
     private static final String MAVEN_CENTRAL = "https://repo1.maven.org/maven2/";
     private static final String BUNDLE_ROOT = "/META-INF/anydecoder/tools/";
 
-    private final Path home;
-    private final Optional<Path> overrideDirectory;
+    private final Path toolsDirectory;
+    private final Optional<Path> explicitDirectory;
 
-    public ToolCache(Path home, Optional<Path> overrideDirectory) {
-        this.home = home;
-        this.overrideDirectory = overrideDirectory;
+    public ToolCache(Path toolsDirectory, Optional<Path> explicitDirectory) {
+        this.toolsDirectory = toolsDirectory;
+        this.explicitDirectory = explicitDirectory;
     }
 
     public static ToolCache forCurrentUser() {
-        return new ToolCache(Path.of(System.getProperty("user.home")), Optional.empty());
+        return new ToolCache(Path.of(System.getProperty("user.home"), ".anydecoder", "tools"),
+                Optional.empty());
     }
 
     /**
@@ -49,14 +55,14 @@ public final class ToolCache {
      * @throws DecompilerException when every source failed
      */
     public Path resolve(ToolArtifact artifact) throws DecompilerException {
-        if (overrideDirectory.isPresent()) {
-            Path candidate = overrideDirectory.get().resolve(artifact.fileName());
+        if (explicitDirectory.isPresent()) {
+            Path candidate = explicitDirectory.get().resolve(artifact.fileName());
             if (Files.isReadable(candidate)) {
                 return candidate;
             }
         }
 
-        Path cached = artifact.cachePath(home);
+        Path cached = artifact.pathIn(toolsDirectory);
         if (Files.isReadable(cached)) {
             return cached;
         }

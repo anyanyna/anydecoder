@@ -72,10 +72,15 @@ One class per decompiler, all launched as **subprocesses**. Each ships its own c
 libraries and some call `System.exit`; a subprocess keeps those concerns out and lets one engine
 fail without taking the run down.
 
-`ToolCache` resolves each engine's jar: an explicit path, then `~/.anydecoder/tools/`, then the
+`ToolCache` resolves each engine's jar: an explicit path, then the run's tools directory, then the
 copy bundled inside anydecoder's own artifact, then a download from Maven Central. The bundled
 copy is why a normal install never reaches the fourth step, and the pinned version is why every
 user of a given release compares against the same engine behaviour.
+
+The tools directory is `<work-dir>/.tools` by default — beside the run's scratch space rather than
+in the user's home directory, so a project kept on another drive causes nothing to accumulate on
+the system drive. `-Danydecoder.tools` puts it wherever a caller prefers, which is worth doing if
+several runs should share one copy.
 
 Engine exit codes are treated as advisory. CFR exits non-zero for classes it merely found
 uninteresting, so a non-zero exit is fatal only when no source was produced.
