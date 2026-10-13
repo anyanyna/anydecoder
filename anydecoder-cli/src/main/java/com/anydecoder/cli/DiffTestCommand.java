@@ -62,6 +62,11 @@ public final class DiffTestCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (!java.nio.file.Files.isDirectory(originalClasses)
+                || !java.nio.file.Files.isDirectory(rebuiltClasses)) {
+            System.err.println("anydecoder: both arguments must be directories of class files");
+            return 2;
+        }
         List<Path> jars = dependencies == null
                 ? List.of()
                 : ArtifactScanner.expandDependencies(dependencies);

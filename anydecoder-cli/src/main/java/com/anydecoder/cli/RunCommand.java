@@ -92,6 +92,13 @@ public final class RunCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (!java.nio.file.Files.exists(input)) {
+            // A stack trace for a mistyped path is noise, and it buries the one line that says
+            // what is wrong. Reported here rather than left to surface from three layers down.
+            System.err.println("anydecoder: no such input: " + input);
+            return 2;
+        }
+
         Path resolvedOutput = output != null ? output : Path.of("anydecoder-out");
         Path resolvedWork = work != null ? work : resolvedOutput.resolve("work");
 
@@ -110,7 +117,19 @@ public final class RunCommand implements Callable<Integer> {
                 java.util.Optional.ofNullable(tools));
 
         PrintStream log = System.out;
-        PipelineOutcome outcome = new DecoderPipeline(cache).run(options, log);
+        PipelineOutcome outcome;
+        try {
+            outcome = new DecoderPipeline(cache).run(options, log);
+        } catch (Exception e) {
+            // The message, not the trace. Someone who pointed the tool at the wrong directory
+            // needs to know that, and three layers of frames do not tell them. Set
+            // -Danydecoder.debug to get the trace back when the fault is the tool's.
+            System.err.println("anydecoder: " + e.getMessage());
+            if (Boolean.getBoolean("anydecoder.debug")) {
+                e.printStackTrace();
+            }
+            return 2;
+        }
 
         Files.createDirectories(resolvedOutput);
         String markdown = GateReportWriter.toMarkdown(outcome);

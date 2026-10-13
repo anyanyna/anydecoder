@@ -74,6 +74,14 @@ public final class GateCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (!Files.isDirectory(originalClasses)) {
+            System.err.println("anydecoder: no such directory: " + originalClasses);
+            return 2;
+        }
+        if (!Files.isDirectory(rebuiltClasses)) {
+            System.err.println("anydecoder: no such directory: " + rebuiltClasses);
+            return 2;
+        }
         List<Path> originals = selectOriginals();
         if (originals.isEmpty()) {
             System.err.println("no class files matched under " + originalClasses);
