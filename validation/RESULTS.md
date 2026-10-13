@@ -295,6 +295,48 @@ a rotated loop. One class is left **unresolved** — its count differences are c
 `finally` body inlined once per completion path, and consistent is not the same as checked, so it
 stays on the list.
 
+## 7. End to end, with everything wired up
+
+The whole pipeline over 2984 classes, both engines, with the peel, the engine fallback, the gate,
+the substitution pass and the reporting all running:
+
+| | |
+|---|---|
+| classes found | 2984 |
+| decompiled by CFR | 2451 |
+| submitted to the gate | 2824 (94.6%) |
+| classified safe | 2770 (98.1% of those reached) |
+| need review | 54 |
+| reached by neither engine as compilable source | 55 |
+| not rebuildable on a modern JDK | 2 |
+
+Verdicts: EQUIVALENT 2717, BENIGN 53, SUSPECT 3, DAMAGED 51, not reached 160.
+
+Compiler artefacts accounted for, by category: `FIELD_STORE_HOISTING` 37, `ENUM_CLINIT_CODEGEN` 12,
+`STRING_LITERAL_FOLDING` 6, `BOXING_MATERIALIZATION` 5, `ECJ_NO_IINC_OPTIMIZATION` 3. Every one of
+those was a cause that from the outside looks like several separate findings.
+
+### The engine substitution earned its place
+
+The pass that offers each class the gate was unhappy with to the other engine took the review list
+from **184 to 54**. It attempted 129 classes and **every one improved** — the first evidence that
+running a second engine for its *rendering* rather than only as a cross-check is worth the time it
+costs. Previously the second tree was used only to rescue files that would not compile.
+
+That figure also corrects an assumption: the two engines were being treated as having comparable
+quality with different failure modes. On this corpus Vineflower's rendering was strictly better on
+every class where they differed enough for the gate to notice.
+
+### What the 54 are
+
+Raw decompiler output, so the largest group is what one would expect: **31 classes with a changed
+exception table**, where the handler-group counts moved — three groups to five, three to two. That
+is the shape of a `try`/`finally` restructured, which is a real difference in behaviour and the
+reason the exception table is the gate's hard signal.
+
+Then `invokes` 26, `fields` 7, `consts` 4, `athrow` 2, `instrCount` 2. None of them improved under
+the other engine's rendering, so they are the genuine repair worklist for a CFR-only tree.
+
 ## Reproducing
 
 Neither corpus nor compiled historical source is vendored here. Point the scripts at your own
