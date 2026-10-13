@@ -7,6 +7,7 @@ import com.anydecoder.core.build.SourceFallback;
 import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.engine.CfrDecompiler;
 import com.anydecoder.core.engine.Decompiler;
+import com.anydecoder.core.engine.DecompilerException;
 import com.anydecoder.core.engine.ProcyonDecompiler;
 import com.anydecoder.core.engine.ToolCache;
 import com.anydecoder.core.engine.VineflowerDecompiler;
@@ -45,9 +46,20 @@ import java.util.TreeMap;
 public final class DecoderPipeline {
 
     private final ToolCache tools;
+    private final java.util.function.Function<String, Decompiler> engineFactory;
 
     public DecoderPipeline(ToolCache tools) {
+        this(tools, null);
+    }
+
+    /**
+     * @param engineFactory how to obtain an engine by id, or null for the built-in three. A seam
+     *                      for testing the behaviour around a failing engine, which cannot be
+     *                      provoked with the real ones on demand.
+     */
+    DecoderPipeline(ToolCache tools, java.util.function.Function<String, Decompiler> engineFactory) {
         this.tools = tools;
+        this.engineFactory = engineFactory;
     }
 
     public PipelineOutcome run(PipelineOptions options, PrintStream log) throws Exception {
@@ -60,8 +72,9 @@ public final class DecoderPipeline {
         log.printf("[ingest] %d project class file(s) in %s, %d dependency jar(s)%n",
                 classCount, artifacts.projectClasses(), artifacts.dependencyCount());
 
-        Map<String, Path> trees = decompileAll(options, artifacts, log);
-        Path primary = trees.get(options.engines().get(0));
+        Decompilation decompilation = decompileAll(options, artifacts, log);
+        Map<String, Path> trees = decompilation.trees();
+        Path primary = choosePrimary(options, trees, decompilation.failures(), log);
 
         Map<String, Integer> normalizationCounts = Map.of();
         if (options.enableNormalization()) {
@@ -99,7 +112,7 @@ public final class DecoderPipeline {
 
         return new PipelineOutcome(artifacts, trees, primary, compile, rebuild.excluded(),
                 fallback.substitutions(), substitutions, report, compile.outputDirectory(),
-                normalizationCounts, waivers);
+                normalizationCounts, waivers, decompilation.failures());
     }
 
     /** The waiver file the caller named, or one sitting beside the classes, or none. */
@@ -187,7 +200,7 @@ public final class DecoderPipeline {
         return new ArtifactSet(scanned.projectClasses(), jars, scanned.layout());
     }
 
-    private Map<String, Path> decompileAll(PipelineOptions options, ArtifactSet artifacts,
+    private Decompilation decompileAll(PipelineOptions options, ArtifactSet artifacts,
                                            PrintStream log) throws Exception {
         // Decompilers are more reliable given a jar than a directory, and CFR accepts nothing
         // else, so the class set is packed once and every engine is pointed at the same file.
@@ -196,14 +209,67 @@ public final class DecoderPipeline {
         log.printf("[ingest] packed classes into %s%n", jar);
 
         Map<String, Path> trees = new LinkedHashMap<>();
+        Map<String, String> failedEngines = new LinkedHashMap<>();
         for (String id : options.engines()) {
             Decompiler engine = engineFor(id);
             Path output = options.workDir().resolve("src-" + id);
             log.printf("[decompile] %s %s%n", id, engine.version());
-            engine.decompile(jar, output, artifacts.dependencyJars(), log);
+            try {
+                engine.decompile(jar, output, artifacts.dependencyJars(), log);
+            } catch (DecompilerException e) {
+                // One engine failing is not the run failing. They fail on different inputs and
+                // for different reasons -- a heap that is too small for a large project is the
+                // common one -- and the whole point of running several is that the others carry
+                // on. Aborting here would throw away a decompilation that had already succeeded.
+                failedEngines.put(id, e.getMessage());
+                log.printf("[decompile] %s failed: %s%n", id, e.getMessage());
+                continue;
+            }
+            if (javaFiles(output).isEmpty()) {
+                failedEngines.put(id, "produced no source");
+                log.printf("[decompile] %s produced no source%n", id);
+                continue;
+            }
             trees.put(id, output);
         }
-        return trees;
+
+        if (trees.isEmpty()) {
+            throw new DecompilerException(
+                    "no engine produced any source: " + failedEngines);
+        }
+        return new Decompilation(trees, failedEngines);
+    }
+
+    /**
+     * The engine whose output the rebuild is built from.
+     *
+     * <p>The first one the caller named, unless it failed — in which case the next that produced
+     * source, and the run says so. Falling back rather than aborting is the point of asking for
+     * several engines; a substitute is not the same as the first choice, so it is announced.
+     */
+    private static Path choosePrimary(PipelineOptions options, Map<String, Path> trees,
+                                      Map<String, String> failures, PrintStream log) {
+        for (String id : options.engines()) {
+            Path tree = trees.get(id);
+            if (tree != null) {
+                if (!id.equals(options.engines().get(0))) {
+                    log.printf("[decompile] the first engine failed, building from %s instead;"
+                            + " results will differ from a run where it succeeded%n", id);
+                }
+                return tree;
+            }
+        }
+        throw new IllegalStateException("no engine produced source: " + failures);
+    }
+
+    /**
+     * The trees that were produced, and the engines that failed.
+     *
+     * <p>The failures are carried rather than logged and dropped: a run that silently used one
+     * engine where two were asked for is a different result from one that used two, and the
+     * reader needs to know which they are looking at.
+     */
+    public record Decompilation(Map<String, Path> trees, Map<String, String> failures) {
     }
 
     private SourceTreeCompiler.Result rebuild(PipelineOptions options, ArtifactSet artifacts,
@@ -266,6 +332,9 @@ public final class DecoderPipeline {
     }
 
     private Decompiler engineFor(String id) {
+        if (engineFactory != null) {
+            return engineFactory.apply(id);
+        }
         return switch (id) {
             case "cfr" -> new CfrDecompiler(tools);
             case "vineflower" -> new VineflowerDecompiler(tools);
@@ -301,6 +370,11 @@ public final class DecoderPipeline {
     }
 
     public static List<Path> javaFiles(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            // An engine that failed before it created anything leaves no directory at all, and
+            // walking it would throw rather than report the engine as having produced nothing.
+            return List.of();
+        }
         try (var stream = Files.walk(root)) {
             return stream.filter(p -> p.toString().endsWith(".java")).sorted().toList();
         }

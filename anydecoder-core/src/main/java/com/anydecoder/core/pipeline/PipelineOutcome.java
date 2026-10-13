@@ -28,6 +28,9 @@ import java.util.Map;
  * @param rebuiltClasses     where the rebuilt class files landed
  * @param normalization      how many files each cleanup pass touched
  * @param waivers            the investigated-and-accepted divergences applied to this gate run
+ * @param failedEngines      engines that were asked for and did not produce a tree, with why. A
+ *                           run that used one engine where two were requested is a different
+ *                           result from one that used two, so it is reported rather than omitted.
  */
 public record PipelineOutcome(
         ArtifactSet artifacts,
@@ -40,7 +43,8 @@ public record PipelineOutcome(
         GateReport gate,
         Path rebuiltClasses,
         Map<String, Integer> normalization,
-        WaiverRegistry waivers) {
+        WaiverRegistry waivers,
+        Map<String, String> failedEngines) {
 
     /** Sources that made it into the rebuild. */
     public int compiledSourceCount() {

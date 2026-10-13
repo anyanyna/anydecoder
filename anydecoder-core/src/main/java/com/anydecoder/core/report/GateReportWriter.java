@@ -112,6 +112,7 @@ public final class GateReportWriter {
         }
 
         appendEngineSubstitutions(sb, outcome);
+        appendFailedEngines(sb, outcome);
         appendWaivers(sb, outcome);
         appendThrowsAdvisory(sb, report);
 
@@ -229,6 +230,26 @@ public final class GateReportWriter {
         if (affected.size() > 40) {
             sb.append("- ... and ").append(affected.size() - 40).append(" more\n");
         }
+        sb.append('\n');
+    }
+
+    /**
+     * Engines that were asked for and did not deliver.
+     *
+     * <p>Worth a section of its own. A run with two engines can use the second where the first
+     * failed, which is the point of running two — but the tree is then not what the caller asked
+     * for, and the difference is invisible in the verdicts.
+     */
+    private static void appendFailedEngines(StringBuilder sb, PipelineOutcome outcome) {
+        if (outcome.failedEngines().isEmpty()) {
+            return;
+        }
+        sb.append("## Engines that failed\n\n");
+        sb.append("The run continued with the engines that worked. A decompiled tree from the"
+                + " second choice is not the same as one from the first, so the verdicts below"
+                + " are for what was actually built.\n\n");
+        outcome.failedEngines().forEach((engine, why) ->
+                sb.append("- **").append(engine).append("**: ").append(oneLine(why)).append('\n'));
         sb.append('\n');
     }
 
@@ -438,6 +459,8 @@ public final class GateReportWriter {
                 .toList());
 
         root.put("cleanupPasses", new LinkedHashMap<String, Object>(outcome.normalization()));
+
+        root.put("failedEngines", new LinkedHashMap<String, Object>(outcome.failedEngines()));
 
         if (outcome.waivers() != null && (outcome.waivers().size() > 0
                 || !outcome.waivers().rejected().isEmpty())) {
