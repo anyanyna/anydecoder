@@ -66,6 +66,21 @@ java -jar anydecoder-cli/target/anydecoder.jar run path/to/classes \
 
 得到 `recovered/report.md`、`recovered/report.json`，以及 `recovered/work/src-cfr` 下的源码树。
 
+### 记得给它内存
+
+启动器的堆要比你预期的大。编译反编译出来的源码树是**在同一个进程里对整棵树**做的，而且剥离阶段会反复重来，
+所以内存峰值取决于项目规模，而不是最大的那个类：
+
+```bash
+java -Xmx8g -jar anydecoder-cli/target/anydecoder.jar run <classes> -o recovered
+```
+
+几千个类需要 4GB 以上。给少了**不会干净地失败**：它会在并行流里逐个类地耗尽堆，最后冒出来的是一个关于
+某个 class 文件的错误，而不是关于内存的。anydecoder 认得这种情况并会说明，但堆还是得你自己调。
+
+每个反编译器是**独立进程、独立堆**，用 `-Danydecoder.engine.heap` 设置 —— Vineflower 会建立整项目的视图，
+比另两个吃内存。某个引擎内存耗尽会被记录并跳过，不会让整次运行结束。
+
 改完源码后重新校验，不必再反编译一遍：
 
 ```bash
@@ -131,11 +146,40 @@ graph TD
 这种类的判定是 `BENIGN`，不是 `EQUIVALENT`。两者都安全，分开记是为了让人能分清"比对了、
 对得上"和"发现了差异、已解释清楚"。
 
+### 把差异记录为"已接受"
+
+有些差异是正确且永久的 —— 恢复之后有意改过的源码，本来就与原始 class 不同，再怎么查也不会改变这一点。
+不记录的话，闸门就会一直点名那些已经有人确认过的类，而这会训练读者忽略它。
+
+用一张 Markdown 表记在旁边：
+
+```markdown
+| class | signal | reason | evidence |
+|---|---|---|---|
+| com/example/Foo | excp | 恢复后加的本地认证，不是反编译问题 | commit 03433271 引入；原始 class 该方法无异常表 |
+```
+
+**条目必须写明理由和证据，否则会被拒绝并报出来。** 一份写着"这个我们看过了"的类名列表，和一份写着
+"这个我们放弃了"的列表，读起来一模一样 —— 只有一种值得保留。匹配按「类 + 信号」，绝不按类，
+所以豁免一个差异永远不会掩盖另一个。
+
+剩余差异全部被豁免的类，判定为 `WAIVED` —— 安全，而且**刻意与 `BENIGN` 分开**：一个是关于编译器的
+事实，另一个是可以被质疑的决定。不再匹配任何东西的豁免也会被报出来，因为只增不减的清单没人会读。
+
 ### 动态差分测试
 
 静态闸门比对的是结构，所以两条同类型语句交换顺序是它看不见的 —— `a - b` 里换个操作数顺序，
-指令多重集完全一样。这个局限写在文档里而不是被掩盖，并且在能覆盖的地方被补上：开启差分测试
-后，原始版本与重建版本会被装进两个独立的类加载器，用同一批生成的参数调用，比对结果。
+指令多重集完全一样。这个局限写在文档里而不是被掩盖，并且在能覆盖的地方被补上：
+
+```bash
+java -jar anydecoder-cli/target/anydecoder.jar difftest <原始-class> <重建-class> --deps path/to/deps
+```
+
+两个版本被装进各自独立的类加载器，用同一批生成的参数调用，比对结果。只有参数是基本类型、包装类型或
+字符串的 public 方法会被驱动，其余会被**列为"未驱动"**而不是静默放过 —— 一个什么都没驱动的运行
+不构成等价的证据。种子是固定且会报告的，所以 CI 里发现的差异可以精确复现。
+
+**它会真的执行代码**，所以管线本身不会主动跑它。会写文件或开套接字的方法，照样会写文件或开套接字。
 
 ## AI 用在哪
 
@@ -161,6 +205,11 @@ graph TD
 一致。这些全部保留在 [docs/verification.md](docs/verification.md) 与
 [docs/pitfalls.md](docs/pitfalls.md) 中，那 4 个 bug 变成了回归测试：
 [`HistoricalRegressionTest`](anydecoder-core/src/test/java/com/anydecoder/core/gate/HistoricalRegressionTest.java)。
+
+**anydecoder 又多找到 2 个。** 把同一份语料重新过一遍现在的闸门，找到的是 **8** 个 —— 多出的两个是
+一段被截断的日志文本（`集合深拷贝错误:` 成了 `深拷贝错误:`），以及一个被反编译器从 `synchronized`
+监视表达式里提升出来的死局部变量。当年那套检查器两个都看不见：它比对的是调用**次数**而不是目标，
+而且完全没有常量信号。数字在 [validation/RESULTS.md](validation/RESULTS.md)。
 
 anydecoder 是第二版：同样的方法，改用结构化字节码读取而非文本解析，并把语料作为长期验证保留
 下来。

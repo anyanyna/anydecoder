@@ -241,10 +241,16 @@ compiled with the Eclipse compiler and recompiled with javac.
 That effort found **6 real defects** among 2451 files that a compiler-based comparison could not
 distinguish, and produced a 97.9% figure for classes verified as behaviourally equivalent. It also
 produced four bugs in the checker itself, two of them silent — including a parser that discarded
-every `finally` handler, so a source that had dropped its `finally` compared equal. all of that is
+every `finally` handler, so a source that had dropped its `finally` compared equal. All of that is
 preserved here in [docs/verification.md](docs/verification.md) and
 [docs/pitfalls.md](docs/pitfalls.md), and the four checker bugs are regression tests:
 [`HistoricalRegressionTest`](anydecoder-core/src/test/java/com/anydecoder/core/gate/HistoricalRegressionTest.java).
+
+**anydecoder finds two more.** Re-running the same corpus through this gate turned up **8** defects,
+the extra two being a log message truncated from `集合深拷贝错误:` to `深拷贝错误:` and a dead local
+the decompiler hoisted out of a `synchronized` monitor expression. Neither was visible to the
+original checker: it compared call *counts* rather than targets, and had no constant signal at all.
+The numbers are in [validation/RESULTS.md](validation/RESULTS.md).
 
 anydecoder is the second version: the same method, done with a structured bytecode reader instead
 of text parsing, and with the corpus kept as a standing validation.
