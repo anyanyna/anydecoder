@@ -145,3 +145,4 @@ gate reached it.
 | `gate <original> <rebuilt>` | re-check without decompiling; the inner loop of a repair |
 | `gate ... --format json` | machine-readable findings, for driving repairs |
 | `gate ... --verbose` | include advisory divergences and the reasons for exemptions |
+| `difftest <original> <rebuilt>` | call both versions and compare what they do — the one thing the gate cannot see |

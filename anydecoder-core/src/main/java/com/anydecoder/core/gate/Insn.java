@@ -33,10 +33,6 @@ public record Insn(int opcode, String mnemonic, String operand, int[] targets, b
         this(opcode, mnemonic, operand, target < 0 ? NO_TARGETS : new int[]{target}, canThrow);
     }
 
-    public boolean isBranch() {
-        return targets.length > 0;
-    }
-
     /** Mnemonic plus resolved operand, with an empty operand omitted. */
     public String render() {
         return operand.isEmpty() ? mnemonic : mnemonic + " " + operand;

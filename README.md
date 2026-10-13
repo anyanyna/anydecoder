@@ -200,9 +200,21 @@ grows stops being read. See [docs/verification.md](docs/verification.md#recordin
 
 The static gate compares structure, so two statements of the same kind swapped in order are
 invisible to it — an operand swap in `a - b` produces an identical instruction multiset. That
-limitation is documented rather than papered over, and closed where it can be: with
-differential testing enabled, both versions are loaded in separate classloaders and called with
-the same generated arguments, and the results compared.
+limitation is documented rather than papered over, and closed where it can be:
+
+```bash
+java -jar anydecoder-cli/target/anydecoder.jar difftest <original-classes> <rebuilt-classes> \
+  --deps path/to/deps
+```
+
+Both versions are loaded in separate classloaders and called with the same generated arguments,
+and the results compared. Only public methods whose parameters are primitives, boxed primitives or
+strings are driven; everything else is listed as skipped, because a run that drove nothing is not
+evidence of equivalence. The seed is fixed and reported, so a divergence found in CI can be
+reproduced exactly.
+
+**It runs real code**, which is why the pipeline does not do it by itself. A method that writes
+files or opens sockets will still write files or open sockets.
 
 ## The AI part
 

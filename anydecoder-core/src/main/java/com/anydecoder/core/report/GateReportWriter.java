@@ -3,6 +3,7 @@ package com.anydecoder.core.report;
 import com.anydecoder.core.build.CompileOutcome;
 import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.gate.BenignDivergenceClassifier;
+import com.anydecoder.core.gate.ClassGate;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
 import com.anydecoder.core.gate.GateReport;
@@ -114,6 +115,7 @@ public final class GateReportWriter {
         appendEngineSubstitutions(sb, outcome);
         appendFailedEngines(sb, outcome);
         appendWaivers(sb, outcome);
+        appendUnreached(sb, report);
         appendThrowsAdvisory(sb, report);
 
         sb.append("## Build\n\n");
@@ -157,9 +159,18 @@ public final class GateReportWriter {
 
         sb.append("## What this does and does not establish\n\n");
         sb.append("The gate recompiled the recovered source and compared the result with the"
-                + " original class files: exception-table shape, call targets, field accesses,"
-                + " constants, rethrows, and declaration lists. A class reported"
-                + " `EQUIVALENT` matched on every one of those.\n\n");
+                + " original class files, method by method, on these signals:\n\n");
+        // Taken from the gate itself rather than written out here. A hand-written list drifts:
+        // this paragraph still named six signals two additions after the seventh and eighth had
+        // been added, and a reader has no way to tell that from the outside.
+        for (String signal : new ClassGate().signalIds()) {
+            sb.append("- `").append(signal).append("` — ")
+                    .append(SIGNAL_MEANING.getOrDefault(signal, "compared")).append('\n');
+        }
+        sb.append('\n');
+        sb.append("A class reported `EQUIVALENT` matched on every one of those. A class reported"
+                + " `BENIGN` differed, and each difference was matched to a named compiler"
+                + " artefact, listed above so the identification can be challenged.\n\n");
         sb.append("It does not establish that the source is what the author wrote. Variable"
                 + " names, comments, formatting, and whether a loop was written as `for` or"
                 + " `while` are not recoverable from bytecode and are not claimed.\n\n");
@@ -195,6 +206,32 @@ public final class GateReportWriter {
         }
         if (kept.size() > 60) {
             sb.append("\n... and ").append(kept.size() - 60).append(" more\n");
+        }
+        sb.append('\n');
+    }
+
+    /**
+     * The classes the gate never compared.
+     *
+     * <p>Counted in the summary, and listed here. A number on its own tells a reader that some
+     * part of their codebase went unchecked and leaves them nothing to do about it; the point of
+     * reporting is that they can go and look.
+     */
+    private static void appendUnreached(StringBuilder sb, GateReport report) {
+        List<ClassVerdict> unreached = report.harnessErrors();
+        if (unreached.isEmpty()) {
+            return;
+        }
+        sb.append("## Not reached\n\n");
+        sb.append("The gate never compared these, so nothing is known about them either way.")
+                .append(" **They are not passes.** The sources that would not compile are listed")
+                .append(" under Build; the rest have no counterpart in the rebuild at all.\n\n");
+        unreached.stream().limit(80).forEach(v -> sb.append("- `")
+                .append(v.className().replace('/', '.'))
+                .append(v.note() == null ? "" : "` — " + oneLine(v.note()))
+                .append('\n'));
+        if (unreached.size() > 80) {
+            sb.append("- ... and ").append(unreached.size() - 80).append(" more\n");
         }
         sb.append('\n');
     }
@@ -306,6 +343,22 @@ public final class GateReportWriter {
             sb.append('\n');
         }
     }
+
+    /** One line per signal, for the report's account of what was compared. */
+    private static final Map<String, String> SIGNAL_MEANING = Map.ofEntries(
+            Map.entry("api", "declared members, their descriptors and access flags"),
+            Map.entry("members", "that no method is missing from either side"),
+            Map.entry("excp", "the exception table's shape: which throwing instructions each"
+                    + " handler type protects"),
+            Map.entry("athrow", "how many exceptions are thrown"),
+            Map.entry("invokes", "which methods are called, by resolved target"),
+            Map.entry("fields", "which fields are read and written"),
+            Map.entry("consts", "the values of pool-resident constants"),
+            Map.entry("smallConsts", "the small constants encoded in the instructions"),
+            Map.entry("instrCount", "the size of the body"),
+            Map.entry("concat", "string concatenation traffic, recorded but not judged"),
+            Map.entry("throws", "declared exceptions"),
+            Map.entry("lvt", "the types of declared local variables"));
 
     private static final Map<String, String> CAUSE = Map.of(
             "excp", "the exception table changed: a dropped try, a swallowed handler, or a finally rendered as try-with-resources",

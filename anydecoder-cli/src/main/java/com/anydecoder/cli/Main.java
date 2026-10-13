@@ -19,6 +19,7 @@ import java.util.concurrent.Callable;
         subcommands = {
                 RunCommand.class,
                 GateCommand.class,
+                DiffTestCommand.class,
                 CommandLine.HelpCommand.class
         })
 public final class Main implements Callable<Integer> {

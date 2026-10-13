@@ -44,11 +44,6 @@ public final class ToolCache {
         this.explicitDirectory = explicitDirectory;
     }
 
-    public static ToolCache forCurrentUser() {
-        return new ToolCache(Path.of(System.getProperty("user.home"), ".anydecoder", "tools"),
-                Optional.empty());
-    }
-
     /**
      * Resolve {@code artifact} to a readable jar, fetching it if necessary.
      *

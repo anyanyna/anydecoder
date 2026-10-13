@@ -195,12 +195,4 @@ public final class HierarchyIndex {
         }
     }
 
-    /** How many class headers have been read so far. Useful for reporting. */
-    public int classesIndexed() {
-        return directSupertypes.size();
-    }
-
-    public List<Path> classpath() {
-        return classpath;
-    }
 }
