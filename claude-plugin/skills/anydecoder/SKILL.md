@@ -40,15 +40,27 @@ Locate the jar at `anydecoder-cli/target/anydecoder.jar`. All commands below ass
 ### 1. Run the pipeline
 
 ```bash
-java -jar anydecoder-cli/target/anydecoder.jar run <classes-or-jar-or-war> \
+java -Xmx8g -jar anydecoder-cli/target/anydecoder.jar run <classes-or-jar-or-war> \
   -o <output-dir> \
   --deps <directory-of-dependency-jars>
 ```
+
+**Give it memory.** Compiling the decompiled tree happens in-process on the whole tree, and the
+peel repeats that until it converges, so the peak is a property of the project and not of the
+largest class. A few thousand classes needs more than 4 GB, and under-provisioning does not fail
+cleanly — the run dies one class at a time with an error about a class file rather than about
+memory. If the report says a class failed because the run ran out of heap, raise `-Xmx`.
 
 Add `--deps` for every jar the project compiled against. Discovery finds a `lib/` sitting beside
 the classes, but a project whose jars live elsewhere needs to be told, and without them the
 rebuild fails on symbols that were never missing — producing hundreds of errors that say nothing
 about the decompiled source.
+
+Each decompiler is a separate process with its own heap, set with `-Danydecoder.engine.heap`.
+Vineflower builds a whole-project view and wants more than the others. An engine that exhausts its
+memory is reported and stepped over rather than ending the run, so check the report's *Engines
+that failed* section before trusting a verdict — a tree from the second choice is not the same as
+one from the first.
 
 Read `<output-dir>/report.json`. Its `coverage` block tells you how much of the input the gate
 actually reached. **A low coverage number invalidates any conclusion drawn from the verdicts.**
@@ -80,7 +92,20 @@ expressed in source while matching the original bytecode. Dispatch `divergence-t
 whether each is a real defect or an artefact, and **require the structural evidence**. "It looks
 equivalent" is not an answer this tool accepts.
 
-### 5. Report
+### 5. Record what is accepted
+
+Some divergences are correct and permanent — source deliberately changed after recovery differs
+from the original by design, and no amount of investigating changes that. Left unrecorded, the
+gate keeps naming classes somebody has already cleared, which trains its readers to ignore it.
+
+Write them into `anydecoder-waivers.md` beside the class files (or point at one with `--waivers`),
+as a Markdown table. **Every entry must state why and cite evidence, or it is refused and
+reported.** Matching is per class *and* per signal, so waiving one difference never hides another.
+A class whose remaining differences are all waived is reported `WAIVED` — safe, and deliberately
+distinct from `BENIGN`, because one is a fact about compilers and the other is a decision that can
+be argued with.
+
+### 6. Report
 
 State coverage and the verdict counts. Name the classes that need review. Never report a pass
 rate without the coverage it was computed over, and never describe a class as verified unless the

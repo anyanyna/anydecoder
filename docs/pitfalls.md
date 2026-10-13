@@ -214,6 +214,39 @@ took it to two.
 If you write tooling that reads compiler diagnostics, raise the cap explicitly. There is no
 signal in the output that it was applied.
 
+### Rebuilding the jar under a running JVM
+
+A JVM reads a jar's directory when it opens it, but loads each class from it lazily, on first use.
+Replacing the jar while a run is in flight therefore breaks every class not yet loaded, and the
+symptom is not "the jar changed" — it is a `ClassNotFoundException` for a class that is plainly in
+the jar:
+
+```
+NoClassDefFoundError: org/objectweb/asm/ClassVisitor
+Caused by: ClassNotFoundException: org.objectweb.asm.ClassVisitor
+    at com.anydecoder.core.pipeline.DecoderPipeline.dominantRelease(...)
+```
+
+It cost two full pipeline runs to notice, because the class name changes with whatever the run
+happened to need next. Copy the jar somewhere outside `target/` before a long run, and rebuild
+freely:
+
+```bash
+cp anydecoder-cli/target/anydecoder.jar /tmp/frozen-anydecoder.jar
+java -Xmx6g -jar /tmp/frozen-anydecoder.jar run ...
+```
+
+### A run that exhausts its heap fails one class at a time
+
+Compiling a decompiled tree happens in-process on the whole tree, and the peel repeats that until
+it converges, so the peak is a property of the project rather than of the largest class — a few
+thousand classes needs more than 4 GB for the launcher.
+
+Under-provisioning does not produce an `OutOfMemoryError` where you would look for one. Gating
+runs over a parallel stream, so the first failure to surface is whichever class happens to be in
+flight, and what it reports is an error about a class file. anydecoder recognises the case and
+names the heap, but the flag still has to be raised.
+
 ### Two classpath orders can resolve differently
 
 When jars overlap, `-cp "lib/*"` expands in alphabetical order while an IDE resolves in the order
