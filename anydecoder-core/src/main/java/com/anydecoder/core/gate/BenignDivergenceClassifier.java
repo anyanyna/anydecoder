@@ -63,8 +63,7 @@ public final class BenignDivergenceClassifier {
         tryExplainMissingIincOptimization(original, rebuilt, blocking, unexplained, explanations);
         tryExplainFieldStoreHoisting(original, rebuilt, blocking, unexplained, explanations);
         tryExplainBoxing(original, rebuilt, blocking, unexplained, explanations, hierarchy);
-        tryExplainEnumInitialization(originalClass, rebuiltClass, original, blocking,
-                unexplained, explanations);
+        tryExplainEnumInitialization(originalClass, rebuiltClass, original, unexplained, explanations);
         tryExplainStringLiteralFolding(original, rebuilt, unexplained, explanations);
 
         return new Result(unexplained.isEmpty(), explanations, unexplained);
@@ -626,13 +625,10 @@ public final class BenignDivergenceClassifier {
      */
     private static void tryExplainEnumInitialization(
             ClassModel originalClass, ClassModel rebuiltClass,
-            MethodModel original, List<Divergence> blocking,
+            MethodModel original,
             List<Divergence> unexplained, List<Explanation> explanations) {
 
         if (!original.name().equals("<clinit>") || !isEnum(originalClass)) {
-            return;
-        }
-        if (!onlySignals(blocking, "invokes", "fields", "instrCount")) {
             return;
         }
         java.util.Set<String> declared = new java.util.TreeSet<>();
@@ -807,12 +803,6 @@ public final class BenignDivergenceClassifier {
 
     private static Divergence find(List<Divergence> divergences, String signalId) {
         return divergences.stream().filter(d -> d.signalId().equals(signalId)).findFirst().orElse(null);
-    }
-
-    /** True when every blocking divergence comes from one of the given signals. */
-    private static boolean onlySignals(List<Divergence> blocking, String... signalIds) {
-        Set<String> allowed = Set.of(signalIds);
-        return !blocking.isEmpty() && blocking.stream().allMatch(d -> allowed.contains(d.signalId()));
     }
 
     private static int countOpcode(MethodModel method, int opcode) {
