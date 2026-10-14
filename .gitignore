@@ -1,6 +1,12 @@
 target/
 *.class
 
+# Nothing here vendors a jar. The decompilers arrive from Maven and the CLI shades them into
+# target/, which is already ignored, so a jar at any other path is an artefact of somebody's
+# ad-hoc check rather than part of the project. One such file was committed by accident and
+# survived, because .gitattributes marks *.jar binary and no diff ever showed it.
+*.jar
+
 # anydecoder working directories
 .anydecoder-work/
 anydecoder-out/
