@@ -328,6 +328,51 @@ tests were added — the shape above, which must be excused, and the same two ar
 where one store does follow the other and which must not be. Reverting the change makes the first
 of them fail, so it is testing the rule rather than agreeing with it.
 
+### What the remaining 33 are
+
+The rest of the list is not "unexplained" in the sense of nobody having looked. Each class was run
+through the classifier with its guards instrumented, and each is declined at a named point:
+
+| Where the rule stops | Classes |
+|---|---:|
+| A `consts` or `invokes` difference is present too, so "the same assignment happened at a different point" is no longer the claim being made — declined by design | 5 |
+| The difference is in reads only: both sides write the field the same number of times, or write it not at all, so the loop finds no write difference and reports nothing rather than exempting on an empty check | 15 |
+| A store can reach another store, so some path runs two of them | 12 |
+| The rebuild alone has a store reachable from another | 1 |
+
+Two classes need more said about them, because "almost certainly benign" is not a verdict.
+
+**The 15 read-only cases are the read side of the same compiler behaviour.** For
+`this.fld[r][c] = cond ? a : b`, the original re-reads `this.fld` inside each arm of the conditional
+and stores the element in each arm; the rebuild reads it once before the branch and stores once at
+the join. Same value, same result:
+
+```
+original   40: getfield fld | aaload | ... aastore | 51: goto join
+           55: getfield fld | aaload | ... aastore
+rebuilt    22: getfield fld | aaload | ... ; one aastore at the join
+```
+
+It is not excused for the same reason the write case *is*. In the write case the rule can see that
+no read sits between the stores; here the rebuild reads the field **earlier**, and between that
+read and the point where the original reads it there are calls. A callee that writes the field
+would make the two differ, and establishing that it does not needs effect analysis the gate does
+not have. Excusing it on the grounds that those particular calls obviously do not is exactly the
+"probably fine" this project refuses everywhere else.
+
+**The 12 remaining are stores that genuinely can follow one another**, which is the condition the
+rule exists to require. `InitController.getLocale` is the clearest: the original assigns the field
+once up front and then once in each arm of an if/else-if chain, so on a path through the chain two
+stores really do run. `RecordWriterTextVO` is subtler — the second store is on the exception
+handler's path rather than an ordinary branch. Distinguishing these from the excused shape means
+comparing the values the stores write, which is the value comparison the rule deliberately dropped
+as too strict, and bringing it back would refuse far more than it explains. `AuthorizeNode` is the
+loop case the tests pin.
+
+None of the 33 is a known defect, and all 44 came from a tree verified faithful by hand, so the
+cost of leaving them is a line in a report rather than a wrong answer. That is the trade this
+design makes on purpose.
+
 ## 7. End to end, with everything wired up
 
 The whole pipeline over 2984 classes, both engines, with the peel, the engine fallback, the gate,
@@ -375,3 +420,15 @@ the other engine's rendering, so they are the genuine repair worklist for a CFR-
 Neither corpus nor compiled historical source is vendored here. Point the scripts at your own
 copy; `--deps` takes a directory of jars. Expect roughly half an hour for the full pipeline,
 dominated by decompilation.
+
+The counts in section 6 are from the gate alone, no decompilation, against the recovered source
+compiled with JDK 8, and take about a minute:
+
+```bash
+java -Xmx6g -jar anydecoder.jar gate <original-classes> <compiled-historical-src> \
+  --deps <corpus>/src/main/webapp/WEB-INF/lib --format tsv
+```
+
+Both columns of that section come from this one command, differing only in the jar — which is what
+makes the comparison worth anything. Reverting the commit that removed the guard reproduces the
+before column exactly, including the twelve `DAMAGED` classes.
