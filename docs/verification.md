@@ -114,9 +114,16 @@ compiles and changes which storage is touched.
 conditional, while javac emits one after the branches join. The original therefore writes the
 field more times than the rebuild, to the same field, on mutually exclusive paths.
 
-That is benign — and proving it needs control-flow analysis, which the gate does not do. Reporting
-it as `SUSPECT` rather than excusing it on a heuristic is the consistent choice. This is the
-largest single category in the corpus results, and
+That is benign, but only under a condition the gate checks rather than assumes: **no store of the
+field may be reachable from another one.** If one is, some path runs two of them, and a read
+between them sees a value the second is about to replace — which moving the stores would change.
+The check is control-flow analysis over the single method
+([`MethodFlow`](../anydecoder-core/src/main/java/com/anydecoder/core/gate/MethodFlow.java)), and it
+is deliberately conservative: stores that can follow one another around a loop are refused even
+where a person would say the two versions produce the same thing.
+
+Where the condition holds the difference is `BENIGN` under `FIELD_STORE_HOISTING`; where it does
+not, it stays `SUSPECT`. This is the largest single category in the corpus results, and
 [`validation/RESULTS.md`](../validation/RESULTS.md) says so with the counts.
 
 ### `consts` — pool-resident constants · hard
@@ -236,7 +243,7 @@ requires the structural pattern to actually be present:
 | `ECJ_BOOLEAN_MATERIALIZATION` | The rebuild is smaller by exactly the excess `ireturn` count, with a matching excess of `iconst_0`/`iconst_1` in the original |
 | `ECJ_NO_IINC_OPTIMIZATION` | The rebuild has more `iinc` and is smaller by 2–4 instructions per extra `iinc` |
 | `EXCEPTION_SEGMENT_SPLIT` | Both tables protect the same throwing instructions; only the row boundaries differ |
-| `FIELD_STORE_HOISTING` | The rebuild writes a field fewer times, every original write stores the same value, and the field is never read back |
+| `FIELD_STORE_HOISTING` | The rebuild writes a field fewer times, and no store of that field is reachable from another |
 | `BOXING_MATERIALIZATION` | The only differing calls are boxing or unboxing; every other call still lines up |
 | `STRING_CONCAT` | The only difference is `StringBuilder`/`StringBuffer` traffic *(advisory)* |
 | `ACCESSOR_NAMING`, `MEMBER_ORDER`, `FINALLY_SELF_PROTECTION` | Handled by normalisation; recorded so the exclusion is visible |

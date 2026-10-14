@@ -251,7 +251,7 @@ than by reasoning about it:
 Both were latent until the tree was compiled with its original compiler, where the remaining
 differences are few enough that a wrong one stands out.
 
-## 6. Working the list down, and the four mechanisms it produced
+## 6. Working the list down, and the mechanisms it produced
 
 The recovered source was gated against the originals on **commit `0e91a4ef`** — the tree as
 recovered, before any hand-editing — compiled with JDK 8, the compiler generation that built the
@@ -260,8 +260,8 @@ originals.
 | | start | end |
 |---|---:|---:|
 | EQUIVALENT | 2820 | 2820 |
-| BENIGN | 28 | 43 |
-| SUSPECT | 86 | 87 |
+| BENIGN | 28 | 87 |
+| SUSPECT | 86 | 43 |
 | **WAIVED** | — | **2** |
 | **DAMAGED** | **28** | **10** |
 
@@ -294,6 +294,39 @@ static call made through an instance expression whose qualifier javac evaluates 
 a rotated loop. One class is left **unresolved** — its count differences are consistent with a
 `finally` body inlined once per completion path, and consistent is not the same as checked, so it
 stays on the list.
+
+### A fifth mechanism, found later: the guard under the hoisting rule
+
+The store-hoisting rule was the largest single consumer of the list, and it carried a guard that
+refused the shape it exists to excuse. It searched from each store, blocked by the other stores,
+for *any* read, and refused if it found one. Where the arms of a conditional meet and a read
+follows the join, the store in the arm that was taken does reach that read — correctly, it is the
+arm being taken — while the store in the other arm sits behind a branch that was not taken and is
+therefore not on the way. The search could not tell that apart from a read observing a value on the
+way to a second store, so it refused:
+
+```
+original   36 putfield | 39 goto join | 72 putfield | 75 goto join | 92 putfield
+           join: 96 getfield | 99 ireturn
+rebuild    join: 84 putfield | 88 getfield | 91 ireturn
+```
+
+Both produce the same value and read it once. The condition the rule actually needs is on the
+stores — no store reachable from another, so no path runs two of them — and that check was already
+there, directly above. With the search that added nothing to it removed:
+
+| | before | after |
+|---|---:|---:|
+| EQUIVALENT | 2820 | 2820 |
+| BENIGN | 86 | **97** |
+| SUSPECT | **44** | **33** |
+| DAMAGED | 12 | 12 |
+
+Eleven classes moved from `SUSPECT` to `BENIGN`. `EQUIVALENT` did not move and the twelve classes
+carrying hard findings did not move: the same twelve, with all eight real defects among them. Two
+tests were added — the shape above, which must be excused, and the same two arms inside a loop,
+where one store does follow the other and which must not be. Reverting the change makes the first
+of them fail, so it is testing the rule rather than agreeing with it.
 
 ## 7. End to end, with everything wired up
 

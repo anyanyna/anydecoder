@@ -532,19 +532,18 @@ public final class BenignDivergenceClassifier {
                 "FIELD_STORE_HOISTING",
                 "the original stores a field inside each arm of a conditional and the rebuild"
                         + " stores it once where the branches meet (" + String.join(", ", explained)
-                        + "); the same value is produced either way, and no intermediate store can"
-                        + " be observed because every read of the field is dominated by a store that"
-                        + " has already completed",
+                        + "); the same value is produced either way, and no store of the field can"
+                        + " follow another on any path, so no read can sit between two of them",
                 List.of("fields")));
     }
 
     /**
      * Whether every read of {@code field} sees the final value rather than one on the way there.
      *
-     * <p>The condition is about the reads <em>between</em> stores: starting from any store but the
-     * last, following control without passing through the last store, no read of the field may be
-     * reached. Any read that can be is reading a value that a later store is about to overwrite,
-     * and moving the stores changes what it sees.
+     * <p>The condition is on the stores: no store may be reachable from another. If one is, some
+     * path runs two of them, and a read between them sees a value the second is about to replace,
+     * which moving the stores would change. If none is, each path runs at most one store, and a
+     * read can only ever see that store's value or the one that arrived with the call.
      *
      * <p>A read that happens before every store — the ordinary shape of
      * {@code this.x = this.x == null ? a : b} — is fine, and an earlier version of this rule got
@@ -582,14 +581,10 @@ public final class BenignDivergenceClassifier {
             return true;
         }
 
-        java.util.BitSet storeSet = new java.util.BitSet(insns.size());
-        stores.forEach(storeSet::set);
         java.util.BitSet nothing = new java.util.BitSet(insns.size());
 
         // The stores have to be alternatives, one per path. If any store can reach another then
-        // some path runs two of them, the search below would be cut short at the second one and
-        // would stop seeing what happens after it — an under-approximation, which is the one
-        // direction this analysis must never err in.
+        // some path runs two of them, which is the case this rule must refuse rather than excuse.
         for (int store : stores) {
             java.util.BitSet plain = flow.reachableBlockedBy(store, nothing);
             for (int other : stores) {
@@ -599,17 +594,22 @@ public final class BenignDivergenceClassifier {
             }
         }
 
-        // With one store per path, a read is only observable as an intermediate value if a
-        // *later* store overwrites it first. So: from each store, following control without
-        // running another store, no read of the field may be reached.
-        for (int store : stores) {
-            java.util.BitSet reached = flow.reachableBlockedBy(store, storeSet);
-            for (int read : reads) {
-                if (reached.get(read)) {
-                    return false;
-                }
-            }
-        }
+        // A read sees an intermediate value only if a *later* store overwrites what it read, and
+        // the check above has just established that no store is reachable from another. So there
+        // is no later store on any path, and nothing further to test.
+        //
+        // This used to search from each store, blocked by the others, for any read at all and
+        // refuse if it found one. That refuses every `this.x = cond ? a : b;` followed by a read
+        // of `x`: the arm that stores reaches the read -- correctly, it is the arm being taken --
+        // and the other arm's store sits behind a branch that was not taken, so it is not on the
+        // way. The search read that as an intermediate value being observed, so the guard meant
+        // to make the rule safe refused the very shape the rule exists to excuse.
+        //
+        // Measured: on the corpus, whose source is verified faithful and where a finding is
+        // therefore a false positive by construction, removing that search moved 11 classes from
+        // SUSPECT to BENIGN. `EQUIVALENT` did not move and `DAMAGED` did not move -- the 12
+        // classes carrying hard findings, including all eight known real defects, are the same 12
+        // afterwards. See validation/RESULTS.md.
         return true;
     }
 
