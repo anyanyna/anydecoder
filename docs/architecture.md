@@ -53,7 +53,7 @@ settling it by judgement, which is the guessing this tool exists to replace.
 |---|---|
 | `anydecoder-core` | everything below |
 | `anydecoder-cli` | picocli front end, shaded into `anydecoder.jar` |
-| `claude-plugin` | skill, agents and commands; no build step |
+| `agents` | one skill in the Agent Skills format, plus the Claude Code plugin's agents and commands; no build step |
 
 ### `ingest`
 

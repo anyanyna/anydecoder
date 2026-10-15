@@ -1,17 +1,20 @@
 # anydecoder
 
-**Recover Java source from class files — and prove the recovered source behaves the same.**
+**Give your coding agent the ability to recover Java source from class files — and prove it got
+it right.**
 
 ```
 decompile  →  rebuild  →  compare the rebuilt bytecode with the original
 ```
 
-A decompiler guesses at source. anydecoder checks the guess, mechanically, by recompiling what
-came out and comparing the result against the class file it was derived from. A class whose
-rebuild does the same things as the original is faithful. A class that does not is reported,
-with the specific difference, instead of being quietly presented as recovered source.
+anydecoder is a skill for Claude Code, Codex and Trae, backed by a CLI. Point your agent at a
+directory of `.class` files, a jar, or a war. It recovers the source, then proves the recovery is
+faithful by recompiling it and comparing the result against the bytecode it came from.
 
-[中文说明](README.zh-CN.md) · [如何判定](docs/verification.md) · [反编译陷阱目录](docs/pitfalls.md)
+Whatever cannot be proved is reported, with the specific difference, instead of being quietly
+handed over as recovered source.
+
+[中文说明](README.zh-CN.md) · [How it decides](docs/verification.md) · [Decompiler failure modes](docs/pitfalls.md)
 
 ---
 
@@ -31,206 +34,147 @@ The way out is not a better decompiler. It is a check that does not depend on re
 > If you recompile the recovered source and the bytecode matches the original, the source is
 > faithful — regardless of how it reads or what you think of it.
 
-anydecoder is that check, plus everything needed to run it over a real project.
+That check is the whole point, and it is mechanical. The agent is what makes it usable: a real
+project produces hundreds of classes the checker cannot clear on its own, and each one needs
+someone to read the disassembly, decide, and try again. That is the work anydecoder hands to your
+agent, with the verdict — not the model's confidence — as the answer.
 
 ## What it establishes, and what it does not
 
-**Establishes**, for each class it reaches:
-
-- the exception table covers the same throwing instructions with the same handler types;
-- the same methods, fields and field accesses are used;
-- the same constants are loaded;
-- the same number of rethrows appear;
-- the shape is within a tolerance calibrated against real compiler differences.
+**Establishes**, for each class the gate reaches: the exception table covers the same throwing
+instructions with the same handler types; the same methods, fields and field accesses are used;
+the same constants are loaded; the same number of rethrows appear; and the shape is within a
+tolerance calibrated against real compiler differences.
 
 **Does not establish:**
 
 - that the source is what the author wrote. Variable names, comments, formatting, and whether a
-  loop was written as `for` or `while` are not in the bytecode and are not claimed.
+  loop was written as `for` or `while` are not in the bytecode and are not claimed;
 - anything about classes the gate did not reach. Coverage is reported next to every verdict for
-  exactly this reason, and `HARNESS_ERROR` is never counted as a pass.
-- runtime behaviour, except where differential testing is enabled — which closes the one
-  structural blind spot the static comparison has. See [docs/verification.md](docs/verification.md).
+  exactly this reason, and `HARNESS_ERROR` is never counted as a pass;
+- runtime behaviour, except where differential testing is enabled.
+
+Results are `EQUIVALENT`, `BENIGN`, `WAIVED` (all safe) or `SUSPECT`, `DAMAGED`, `HARNESS_ERROR`
+(not safe). The difference between them is the subject of
+[docs/verification.md](docs/verification.md), which also documents the signals, the recognised
+compiler artefacts, and the blind spots that are known and not papered over.
 
 ## Quickstart
+
+### 1. Build the CLI
 
 Requires JDK 17+ and Maven. The decompilers ship inside the jar, so there is nothing else to
 install.
 
 ```bash
+git clone https://github.com/anyanyna/anydecoder
+cd anydecoder
 mvn -q package -DskipTests
 ```
 
-Recover a project (a class directory, a jar, or a war):
+This produces `anydecoder-cli/target/anydecoder.jar`. If your Maven points `central` at an
+internal mirror, add `-s /path/to/settings.xml`.
+
+### 2. Install the skill
+
+The skill is one file, [`agents/skills/anydecoder/SKILL.md`](agents/skills/anydecoder/SKILL.md),
+written to the [Agent Skills](https://agentskills.io) format and read unchanged by all three
+agents. Copy the whole directory — `SKILL.md` is the entry point and its siblings are reference
+material.
+
+| Agent | Install for one project | Install for every project |
+|---|---|---|
+| **Claude Code** | `.claude/skills/anydecoder/` | `~/.claude/skills/anydecoder/` |
+| **Codex** | `.agents/skills/anydecoder/` | `~/.agents/skills/anydecoder/` |
+| **Trae** | `.trae/skills/anydecoder/` | `%userprofile%/.trae-cn/skills/anydecoder/` |
 
 ```bash
-java -jar anydecoder-cli/target/anydecoder.jar run path/to/classes \
-  -o recovered \
-  --deps path/to/WEB-INF/lib
+# Claude Code — project-level
+mkdir -p .claude/skills && cp -r /path/to/anydecoder/agents/skills/anydecoder .claude/skills/
+
+# Codex and Trae both read the .agents convention
+mkdir -p .agents/skills && cp -r /path/to/anydecoder/agents/skills/anydecoder .agents/skills/
 ```
 
-You get `recovered/report.md`, `recovered/report.json`, and the source tree under
-`recovered/work/src-cfr`.
+Two notes, both because the platforms differ:
 
-### Give it memory
+- **Trae** uses `.trae/skills/` natively and reads `.agents/skills/` only after you switch on
+  *Enable .agents skills directory* in its settings. Either works.
+- **Codex** discovers `.agents/skills/` in your working directory and every directory above it,
+  so a repository-root install is picked up everywhere inside the repository.
 
-Give the launcher more heap than you would expect. Compiling a decompiled tree happens in-process
-on the whole tree at once, and the peel repeats that until it converges, so the peak is a
-property of the project rather than of the largest class:
+**Claude Code can also take the whole plugin**, which adds three repair subagents and two slash
+commands on top of the skill:
 
 ```bash
-java -Xmx8g -jar anydecoder-cli/target/anydecoder.jar run <classes> -o recovered
+claude --plugin-dir /path/to/anydecoder/agents
 ```
 
-A few thousand classes needs more than 4 GB. Under-provisioning does not fail cleanly: the run
-exhausts its heap one class at a time inside a parallel stream, and what surfaces is an error
-about a class file rather than about memory. anydecoder recognises that case and says so, but the
-heap still has to be raised.
+### 3. Tell your agent what you want
 
-Each decompiler runs as its own process with its own heap, set separately with
-`-Danydecoder.engine.heap` — Vineflower builds a whole-project view and wants more than the
-others. An engine that exhausts its memory is reported and stepped over rather than ending the
-run.
+Say it in your own words. The skill triggers on the situation, not on a keyword:
 
-Re-check after editing, without decompiling again:
+```
+Recover the source from build/classes and prove it's faithful.
+```
+
+```
+We lost the source to this jar. Get it back, and tell me which classes you could not verify.
+```
+
+```
+The gate says 12 classes need review. Work through them.
+```
+
+You get a source tree, a report, and a coverage number. **Read the coverage number first** — a
+gate that reached a tenth of the input has not told you much about the other nine tenths, and the
+skill is written to say so rather than to summarise it away.
+
+## Using the CLI directly
+
+The agent drives the CLI, but every step is a command you can run yourself. No AI involved.
 
 ```bash
-java -jar anydecoder-cli/target/anydecoder.jar gate path/to/classes rebuilt/classes
+# the whole pipeline: decompile, clean up, rebuild, gate, report
+java -Xmx8g -jar anydecoder-cli/target/anydecoder.jar run <classes|jar|war> \
+  -o recovered --deps <directory-of-dependency-jars>
+
+# re-check after editing, without decompiling again
+java -jar anydecoder-cli/target/anydecoder.jar gate <original-classes> <rebuilt-classes>
+
+# call both versions and compare what they do — the one thing the gate cannot see
+java -jar anydecoder-cli/target/anydecoder.jar difftest <original-classes> <rebuilt-classes>
 ```
 
 Exit status is `0` when everything the gate reached is safe, `1` when something needs review.
 
-## How it works
+Give `run` more heap than you would expect: the rebuild happens in-process on the whole tree, so
+the peak is a property of the project rather than of the largest class. A few thousand classes
+needs more than 4 GB. Under-provisioning does not fail cleanly, and
+[the skill says why](agents/skills/anydecoder/SKILL.md) — it is worth reading before a first long
+run.
 
-```mermaid
-graph TD
-    A[class files, jar or war] --> B[ingest]
-    B -->|project classes| C[pack into a jar]
-    B -->|dependency jars| D[compile classpath only]
-    C --> E[decompile with CFR and Vineflower]
-    E --> F[source cleanup passes]
-    F --> G[recompile with javac]
-    D --> G
-    G --> H{bytecode gate}
-    H -->|EQUIVALENT| I[report]
-    H -->|BENIGN with named category| I
-    H -->|SUSPECT or DAMAGED| J[report as needs review]
-    H --> K[differential test - optional]
-    K --> I
-    style H fill:#ffe4b5,stroke:#333,stroke-width:2px
-```
+`difftest` **runs real code**, which is why the pipeline does not invoke it by itself. A method
+that writes files or opens sockets will still write files or open sockets.
 
-Only the project's own classes are decompiled. Dependency jars sit on the classpath so the
-rebuild resolves the same types the original did — decompiling them would multiply the work while
-answering a question nobody asked.
+## Repository layout
 
-Two engines run by default, and the second is not only a cross-check. Decompilers fail on
-different inputs, so **a file the first engine could not structure is replaced by the second's
-rendering** before it is given up on. Whatever ends up in the tree is compiled and gated like
-anything else, so a worse rendering is caught rather than preferred by assumption. The report
-lists which files came from which engine.
+| | |
+|---|---|
+| [`anydecoder-core/`](anydecoder-core/) | ingest, decompile, normalise, rebuild, gate, report |
+| [`anydecoder-cli/`](anydecoder-cli/) | the `anydecoder.jar` front end |
+| [`agents/`](agents/) | the skill, plus the Claude Code plugin's subagents and commands |
+| [`docs/`](docs/) | how it decides, how it is built, what goes wrong |
+| [`validation/`](validation/README.md) | the standing corpus and its results |
 
-### The gate
+## Documentation
 
-Per method, compared against the original:
-
-| Signal | Catches | Hard? |
-|---|---|---|
-| `api` | a changed signature, field, or visibility | hard |
-| `members` | a method the rebuild does not produce | hard |
-| `excp` | a dropped `try`, a swallowed handler, a `finally` turned into try-with-resources | **hard** |
-| `athrow` | a rethrow turned into a jump | hard |
-| `invokes` | a duplicated or missing call, a rebound overload | hard |
-| `fields` | a field touched on one side only, or as a different opcode | hard¹ |
-| `consts` | a changed constant | hard |
-| `instrCount` | code silently dropped or invented | suspect |
-| `lvt` | a local declared with a wider or narrower type | advisory |
-| `throws` | a declared exception the rebuild lost | advisory |
-
-¹ A field touched on one side only is hard; the same field touched a *different number of times*
-is `SUSPECT`, because a compiler may duplicate a store into each arm of a conditional. See
-[the reasoning](docs/verification.md#fields--field-accesses--hard-with-a-caveat-about-counts).
-
-The hard part is not the comparison, it is knowing what to ignore. Two compilers disagree about
-constant-pool numbering, branch offsets, local variable slots, member order, synthetic accessor
-names, exception-region segmentation and string-concatenation codegen. Every one of those is
-normalised away, each because it was measured on real output and found to carry no meaning. What
-is left is the set of differences that do.
-
-### When something differs
-
-A difference is not automatically a defect. Some are the compiler's own doing, and
-anydecoder recognises those (`ECJ_BOOLEAN_MATERIALIZATION`, `ECJ_NO_IINC_OPTIMIZATION`,
-`EXCEPTION_SEGMENT_SPLIT`, `STRING_CONCAT`, `ACCESSOR_NAMING`, `MEMBER_ORDER`,
-`FINALLY_SELF_PROTECTION`, `FIELD_STORE_HOISTING`, `BOXING_MATERIALIZATION`).
-
-Each recognition must name the structural pattern that produces the difference and show that it
-is present. **There is no fallback to "probably harmless."** A difference nothing recognises
-stays a difference, reaches the report, and says so with its evidence attached.
-
-A class in this state is reported `BENIGN`, never `EQUIVALENT`. Both are safe; keeping them apart
-means a reader can tell which classes were checked and matched from which were found to differ and
-explained.
-
-### Recording a divergence as accepted
-
-Some divergences are correct and permanent — source deliberately changed after recovery differs
-from the original by design, and no amount of investigating changes that. Left unrecorded, the
-gate keeps naming classes somebody has already cleared, which trains its readers to ignore it.
-
-So a decision can be recorded, in a Markdown table:
-
-```markdown
-| class | signal | reason | evidence |
-|---|---|---|---|
-| com/example/Foo | excp | local auth added after recovery | commit 03433271 |
-```
-
-**An entry must state why and cite evidence, or it is refused and reported.** A list of class
-names saying "we looked at this" reads exactly like one saying "we gave up", and only one of those
-is worth having. Matching is per class *and* per signal, so waiving one difference never hides
-another.
-
-A class whose remaining differences are all waived is reported `WAIVED` — safe, and deliberately
-distinct from `BENIGN`, because one is a fact about compilers and the other is a decision that can
-be argued with. Waivers that no longer match anything are reported too, since a list that only
-grows stops being read. See [docs/verification.md](docs/verification.md#recording-a-divergence-as-accepted).
-
-### Differential testing
-
-The static gate compares structure, so two statements of the same kind swapped in order are
-invisible to it — an operand swap in `a - b` produces an identical instruction multiset. That
-limitation is documented rather than papered over, and closed where it can be:
-
-```bash
-java -jar anydecoder-cli/target/anydecoder.jar difftest <original-classes> <rebuilt-classes> \
-  --deps path/to/deps
-```
-
-Both versions are loaded in separate classloaders and called with the same generated arguments,
-and the results compared. Only public methods whose parameters are primitives, boxed primitives or
-strings are driven; everything else is listed as skipped, because a run that drove nothing is not
-evidence of equivalence. The seed is fixed and reported, so a divergence found in CI can be
-reproduced exactly.
-
-**It runs real code**, which is why the pipeline does not do it by itself. A method that writes
-files or opens sockets will still write files or open sockets.
-
-## The AI part
-
-The mechanic above is not AI, and that is deliberate — a mechanical check is what makes the
-result trustworthy. AI is used where judgement is genuinely required, and always under the gate:
-
-- **Repairing a damaged class.** Read the disassembly, diagnose, rewrite, then re-gate. The
-  verdict, not the model's confidence, is the answer.
-- **Triaging a divergence.** Decide whether it is a real defect or a compiler artefact, with the
-  structural evidence required either way.
-- **Making correct-but-unreadable source readable.** `blockNN:` labels are valid Java that behaves
-  exactly as the original did; rewriting them was previously blocked on a person convincing
-  themselves it was safe. It is now a mechanical question, so the rewrite can be attempted freely.
-
-The Claude Code plugin in [`claude-plugin/`](claude-plugin/) provides a skill, three agents and
-two commands for this. The CLI works without it; the plugin drives it.
+| | |
+|---|---|
+| [How anydecoder decides](docs/verification.md) | every signal, every tolerance, and the measurement it came from |
+| [Decompiler failure modes](docs/pitfalls.md) | the defects this catches, and the things that look alarming and are fine |
+| [Architecture](docs/architecture.md) | the pipeline, module by module |
+| [Validation results](validation/RESULTS.md) | the numbers from a real corpus |
 
 ## Where this came from
 
@@ -241,39 +185,25 @@ compiled with the Eclipse compiler and recompiled with javac.
 That effort found **6 real defects** among 2451 files that a compiler-based comparison could not
 distinguish, and produced a 97.9% figure for classes verified as behaviourally equivalent. It also
 produced four bugs in the checker itself, two of them silent — including a parser that discarded
-every `finally` handler, so a source that had dropped its `finally` compared equal. All of that is
-preserved here in [docs/verification.md](docs/verification.md) and
-[docs/pitfalls.md](docs/pitfalls.md), and the four checker bugs are regression tests:
-[`HistoricalRegressionTest`](anydecoder-core/src/test/java/com/anydecoder/core/gate/HistoricalRegressionTest.java).
+every `finally` handler, so a source that had dropped its `finally` compared equal. The four are
+regression tests now.
 
-**anydecoder finds two more.** Re-running the same corpus through this gate turned up **8** defects,
-the extra two being a log message truncated from `集合深拷贝错误:` to `深拷贝错误:` and a dead local
-the decompiler hoisted out of a `synchronized` monitor expression. Neither was visible to the
-original checker: it compared call *counts* rather than targets, and had no constant signal at all.
-The numbers are in [validation/RESULTS.md](validation/RESULTS.md).
-
-anydecoder is the second version: the same method, done with a structured bytecode reader instead
-of text parsing, and with the corpus kept as a standing validation.
-
-## Building and testing
-
-```bash
-mvn verify
-```
-
-If your Maven installation points `central` at an internal mirror, pass a settings file:
-`mvn -s /path/to/settings.xml verify`.
+**anydecoder finds two more.** Re-running the same corpus through this gate turned up **8**
+defects, the extra two being a log message truncated from `集合深拷贝错误:` to `深拷贝错误:` and a
+dead local the decompiler hoisted out of a `synchronized` monitor expression. Neither was visible
+to the original checker.
 
 ## Limits
 
 - **The gate is as good as its signals.** It cannot see a swap of two independent statements of
   the same kind. Differential testing covers that where it is enabled and the method is drivable.
 - **Unobfuscated bytecode only.** Obfuscated input — control-flow flattening, encrypted strings,
-  renamed members — is out of scope for this version. The cleanup layer is an extension point.
+  renamed members — is out of scope for this version.
 - **Engines are pinned.** CFR 0.152 and Vineflower 1.11.1, because the gate's tolerance was
-  calibrated against their output. Upgrading either is a change to what anydecoder validates, not
-  a routine dependency bump.
-- **Differential testing runs real code.** It is off by default for that reason.
+  calibrated against their output. Upgrading either changes what anydecoder validates.
+- **The agent is not the authority.** It reads the disassembly and decides what to try; the gate
+  decides whether the attempt worked. A plausible repair that does not satisfy the gate is still a
+  failed repair.
 
 ## Licence
 
