@@ -14,7 +14,7 @@ import java.util.concurrent.Callable;
 @CommandLine.Command(
         name = "anydecoder",
         mixinStandardHelpOptions = true,
-        version = "anydecoder 0.1.0",
+        version = "anydecoder 0.1.1",
         description = "Recover Java source from class files, and prove the result behaves the same.",
         subcommands = {
                 RunCommand.class,

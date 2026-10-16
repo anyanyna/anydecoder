@@ -1,6 +1,6 @@
 {
   "name": "anydecoder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Recover Java source from class files, and prove the result behaves the same. Drives the anydecoder CLI: decompile, rebuild, gate on bytecode, repair what fails, repeat.",
   "author": {
     "name": "anydecoder contributors"
