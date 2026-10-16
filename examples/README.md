@@ -12,6 +12,8 @@ Nothing here is a fixture prepared for the occasion. It is a library that ships 
 large number of Java applications, and the findings are whatever the two engines actually produce
 on it.
 
+![The run, at the end: 9 of 366 classes need review](demo.png)
+
 ## What you get
 
 ```
