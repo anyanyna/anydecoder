@@ -1,0 +1,48 @@
+name: Something is broken
+description: A crash, a hang, a wrong verdict, or anything that is not an unexplained divergence
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, and what came back.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `java -jar anydecoder.jar --version`.
+      placeholder: anydecoder 0.1.1
+    validations:
+      required: true
+
+  - type: input
+    id: jdk
+    attributes:
+      label: The JDK you ran it on
+      description: '`java -version`, from the same JDK you launched the tool with.'
+      placeholder: openjdk 17.0.6
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Output
+      description: |
+        The full console output if it is short. If the run died, say at which stage — `[ingest]`,
+        `[decompile]`, `[build]`, `[gate]`.
+      render: shell
+    validations:
+      required: false

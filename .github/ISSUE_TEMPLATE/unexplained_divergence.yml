@@ -1,0 +1,63 @@
+name: The check reported something I cannot explain
+description: A class is reported SUSPECT or DAMAGED, or the report says something surprising
+title: "[divergence] "
+labels: ["divergence"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful thing you can send. The gate only knows how to explain a
+        difference by naming the structural pattern that produces it; everything else it hands to
+        a human on purpose. If it handed you something you cannot account for, that is either a
+        real defect in the recovered source or a real gap in the checker, and both are worth
+        having.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What was reported
+      description: Paste the entry from `report.json`, or the section of `report.md`.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: |
+        If you have already decided it is a compiler artefact, say which one and why — that is
+        the same evidence the checker would need in order to stop reporting it.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `java -jar anydecoder.jar --version`.
+      placeholder: anydecoder 0.1.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: Which command produced it
+      options:
+        - run
+        - gate
+        - difftest
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: |
+        A public jar or library that shows it is ideal — the whole point of the tool is that
+        findings are checkable by someone else. If you cannot share the input, say so and share
+        the disassembly of the method instead.
+    validations:
+      required: false

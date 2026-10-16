@@ -1,5 +1,10 @@
 # anydecoder
 
+[![build](https://github.com/anyanyna/anydecoder/actions/workflows/build.yml/badge.svg)](https://github.com/anyanyna/anydecoder/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/anyanyna/anydecoder)](https://github.com/anyanyna/anydecoder/releases)
+[![license](https://img.shields.io/github/license/anyanyna/anydecoder)](LICENSE)
+[![JDK](https://img.shields.io/badge/JDK-17%2B-blue)](https://github.com/anyanyna/anydecoder)
+
 **让你的编码 Agent 能恢复 Java 源码 —— 并证明它恢复对了。**
 
 ```

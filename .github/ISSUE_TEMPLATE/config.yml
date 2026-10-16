@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question, or show what you recovered with it
+    url: https://github.com/anyanyna/anydecoder/discussions
+    about: For anything that is not a bug report or an unexplained divergence.
+  - name: Read how the check decides
+    url: https://github.com/anyanyna/anydecoder/blob/main/docs/verification.md
+    about: Every signal, every tolerance, and the measurement each tolerance came from.

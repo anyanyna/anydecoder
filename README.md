@@ -1,5 +1,10 @@
 # anydecoder
 
+[![build](https://github.com/anyanyna/anydecoder/actions/workflows/build.yml/badge.svg)](https://github.com/anyanyna/anydecoder/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/anyanyna/anydecoder)](https://github.com/anyanyna/anydecoder/releases)
+[![license](https://img.shields.io/github/license/anyanyna/anydecoder)](LICENSE)
+[![JDK](https://img.shields.io/badge/JDK-17%2B-blue)](https://github.com/anyanyna/anydecoder)
+
 **Give your coding agent the ability to recover Java source from class files — and prove it got
 it right.**
 
