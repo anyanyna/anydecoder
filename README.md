@@ -60,6 +60,24 @@ the bytecode — and it will not vouch for a class it never reached.
 came from, the recognised compiler artefacts, and the blind spots that are documented rather than
 papered over.
 
+## See it work
+
+Decompile Apache Commons Lang — one of the most widely deployed Java libraries there is — and
+check the result. About thirty seconds:
+
+```bash
+curl -LO https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar
+java -Xmx4g -jar ~/.anydecoder/anydecoder.jar run commons-lang3-3.14.0.jar -o demo
+```
+
+It recovers 247 source files from 404 classes. **Nine of those 247 do not compile** under either
+engine — and of the ones that do, the gate still finds a class that calls a *different method*
+than the original, because the decompiler dropped an explicit cast the author had written.
+
+A decompiler alone hands you all ten and says nothing.
+
+[The full walkthrough, with the evidence for each →](examples/README.md)
+
 ## Quickstart
 
 Two steps. Your agent does the rest.

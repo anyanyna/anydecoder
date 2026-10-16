@@ -52,6 +52,23 @@ try-with-resources，读起来比原文还漂亮，却悄悄引入了异常抑�
 信号、每一个容差及其来源、能识别出的编译器行为、以及那些被写下来而不是被掩盖的盲区，都在
 [判定方法](docs/verification.md) 里。
 
+## 看看它实际跑起来
+
+拿 Apache Commons Lang —— 部署最广的 Java 库之一 —— 反编译一遍再验证。大约三十秒：
+
+```bash
+curl -LO https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar
+java -Xmx4g -jar ~/.anydecoder/anydecoder.jar run commons-lang3-3.14.0.jar -o demo
+```
+
+从 404 个 class 里恢复出 247 个源文件。**这 247 个里有 9 个根本编译不过**，两个引擎都救不回来。
+而剩下那些能编译的里面，判据仍然抓到一个类**调用了和原著不同的方法** —— 因为反编译器丢掉了作者
+写的一个强制转换。
+
+只用反编译器，这十个问题你一个都不会知道。
+
+[完整的走查过程与每一条的证据 →](examples/README.md)
+
 ## 快速开始
 
 两步。剩下的交给你的 Agent。
