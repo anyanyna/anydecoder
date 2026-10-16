@@ -54,6 +54,8 @@ try-with-resources，读起来比原文还漂亮，却悄悄引入了异常抑�
 
 ## 看看它实际跑起来
 
+![anydecoder 跑在 Apache Commons Lang 上：366 个类里 9 个需要复核](examples/demo.svg)
+
 拿 Apache Commons Lang —— 部署最广的 Java 库之一 —— 反编译一遍再验证。大约三十秒：
 
 ```bash
