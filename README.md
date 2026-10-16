@@ -17,6 +17,26 @@ source.
 
 ---
 
+## See it work
+
+![anydecoder running on Apache Commons Lang: 9 of 366 classes need review](examples/demo.gif)
+
+Decompile Apache Commons Lang — one of the most widely deployed Java libraries there is — and
+check the result. About thirty seconds:
+
+```bash
+curl -LO https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar
+java -Xmx4g -jar ~/.anydecoder/anydecoder.jar run commons-lang3-3.14.0.jar -o demo
+```
+
+It recovers 247 source files from 404 classes. **Nine of those 247 do not compile** under either
+engine — and of the ones that do, the gate still finds a class that calls a *different method*
+than the original, because the decompiler dropped an explicit cast the author had written.
+
+A decompiler alone hands you all ten and says nothing.
+
+[The full walkthrough, with the evidence for each →](examples/README.md)
+
 ## Why this exists
 
 Source gets lost. Build outputs get archived, the repository does not, and one day all that
@@ -59,26 +79,6 @@ the bytecode — and it will not vouch for a class it never reached.
 [How it decides](docs/verification.md) covers the signals, the tolerances and the measurement each
 came from, the recognised compiler artefacts, and the blind spots that are documented rather than
 papered over.
-
-## See it work
-
-![anydecoder running on Apache Commons Lang: 9 of 366 classes need review](examples/demo.gif)
-
-Decompile Apache Commons Lang — one of the most widely deployed Java libraries there is — and
-check the result. About thirty seconds:
-
-```bash
-curl -LO https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar
-java -Xmx4g -jar ~/.anydecoder/anydecoder.jar run commons-lang3-3.14.0.jar -o demo
-```
-
-It recovers 247 source files from 404 classes. **Nine of those 247 do not compile** under either
-engine — and of the ones that do, the gate still finds a class that calls a *different method*
-than the original, because the decompiler dropped an explicit cast the author had written.
-
-A decompiler alone hands you all ten and says nothing.
-
-[The full walkthrough, with the evidence for each →](examples/README.md)
 
 ## Quickstart
 
