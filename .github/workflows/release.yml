@@ -1,0 +1,60 @@
+name: release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+# Creating a release writes to the repository, which the default token cannot do.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # A tag can land on a commit that never went through a pull request, so the full suite runs
+      # here rather than being assumed from `build`.
+      - name: Build and test
+        run: mvn -B verify
+
+      # The shaded jar bundles the decompilers, and the install instructions point at it. A jar
+      # that cannot print its own version is not worth publishing.
+      - name: Check the jar runs
+        run: java -jar anydecoder-cli/target/anydecoder.jar --version
+
+      # Without this, a tag pushed against a stale commit publishes a jar whose version is not the
+      # version in its name, and nothing downstream can tell.
+      - name: Check the tag matches the project version
+        run: |
+          version=$(grep -m1 -oP '(?<=<version>)[^<]+' pom.xml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the pom version $version"
+            exit 1
+          fi
+
+      # The jar is published here rather than committed to the tree: a build output in git is
+      # there forever and every clone pays for it, while a release asset is permanent, public and
+      # costs the repository nothing.
+      #
+      # SKILL.md rides along so both halves of an install come from the same place and the same
+      # version. Its asset name is deliberately the filename the skill has to end up with, so the
+      # install is a download and not a download-and-rename.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            anydecoder-cli/target/anydecoder.jar \
+            agents/skills/anydecoder/SKILL.md \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

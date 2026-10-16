@@ -59,14 +59,17 @@ try-with-resources，读起来比原文还漂亮，却悄悄引入了异常抑�
 ### 1. 把这段粘贴给你的 Agent
 
 ```
-安装 anydecoder。
+安装 anydecoder。运行它需要一个 JDK 17+。
 
-1. 把 https://github.com/anyanyna/anydecoder 克隆到 ~/.anydecoder
-2. 构建 CLI：cd ~/.anydecoder && mvn -q package -DskipTests    （需要 JDK 17+）
-   产出 anydecoder-cli/target/anydecoder.jar，反编译器已经打包在里面。
-3. 把 ~/.anydecoder/agents/skills/anydecoder 这个 skill 装进你自己的 skills 目录，
-   让当前和以后每个会话都能用上它。
-4. 确认你能看到这个 skill，然后把 jar 的路径告诉我。
+1. 下载 CLI。反编译器已经打包在里面，不需要构建：
+     mkdir -p ~/.anydecoder
+     curl -L -o ~/.anydecoder/anydecoder.jar \
+       https://github.com/anyanyna/anydecoder/releases/latest/download/anydecoder.jar
+2. 把 skill 装进你自己的 skills 目录，让当前和以后每个会话都能用上它。它就是一个文件：
+     mkdir -p <你的-skills-目录>/anydecoder
+     curl -L -o <你的-skills-目录>/anydecoder/SKILL.md \
+       https://github.com/anyanyna/anydecoder/releases/latest/download/SKILL.md
+3. 确认能跑：java -jar ~/.anydecoder/anydecoder.jar --version
 ```
 
 读 [Agent Skills](https://agentskills.io) 规范的 Agent 都能做这件事 —— Claude Code、Codex、

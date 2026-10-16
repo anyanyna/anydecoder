@@ -67,14 +67,18 @@ Two steps. Your agent does the rest.
 ### 1. Paste this into your agent
 
 ```
-Install anydecoder.
+Install anydecoder. You will need a JDK 17+ to run it.
 
-1. Clone https://github.com/anyanyna/anydecoder to ~/.anydecoder
-2. Build the CLI: cd ~/.anydecoder && mvn -q package -DskipTests    (needs JDK 17+)
-   It produces anydecoder-cli/target/anydecoder.jar, decompilers bundled inside.
-3. Install the skill at ~/.anydecoder/agents/skills/anydecoder into your own skills
-   directory, so you pick it up in this and future sessions.
-4. Confirm you can see the skill, and tell me the path to the jar.
+1. Download the CLI. It bundles the decompilers, so there is nothing to build:
+     mkdir -p ~/.anydecoder
+     curl -L -o ~/.anydecoder/anydecoder.jar \
+       https://github.com/anyanyna/anydecoder/releases/latest/download/anydecoder.jar
+2. Install the skill into your own skills directory, so you pick it up in this and future
+   sessions. It is one file:
+     mkdir -p <your-skills-dir>/anydecoder
+     curl -L -o <your-skills-dir>/anydecoder/SKILL.md \
+       https://github.com/anyanyna/anydecoder/releases/latest/download/SKILL.md
+3. Confirm it runs: java -jar ~/.anydecoder/anydecoder.jar --version
 ```
 
 Any agent that reads the [Agent Skills](https://agentskills.io) format can do this — Claude Code,

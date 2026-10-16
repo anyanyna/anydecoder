@@ -25,20 +25,20 @@ right, that means nothing until the gate says the bytecode still matches.
 
 Find the CLI jar before anything else. Look in this order:
 
-1. `~/.anydecoder/anydecoder-cli/target/anydecoder.jar` — where the install instructions put it.
+1. `~/.anydecoder/anydecoder.jar` — where the install instructions put it.
 2. Any other path for it you have already established in this session.
-3. Ask the user where the checkout is.
+3. Ask the user.
 
-If there is no checkout, or the jar is missing, get one and build it:
+If it is missing, download it. The jar bundles the decompilers, so nothing has to be built:
 
 ```bash
-git clone https://github.com/anyanyna/anydecoder ~/.anydecoder
-cd ~/.anydecoder && mvn -q package -DskipTests
+mkdir -p ~/.anydecoder
+curl -L -o ~/.anydecoder/anydecoder.jar \
+  https://github.com/anyanyna/anydecoder/releases/latest/download/anydecoder.jar
 ```
 
-JDK 17+ is required, and the decompilers are bundled into the jar so nothing else has to be
-installed. If the machine's Maven is pointed at an unreachable internal repository, add
-`-s <path-to-a-settings-file-pointing-at-Maven-Central>`.
+JDK 17+ is required to run it. Building from source is only necessary if the task is to change the
+tool itself — clone the repository and run `mvn -q package -DskipTests`.
 
 All commands below assume `java -jar <that jar>`.
 

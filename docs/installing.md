@@ -2,53 +2,46 @@
 
 The [Quickstart](../README.md#quickstart) is a prompt you paste into an agent, and for almost
 everyone that is the whole install. This page is the manual route, for when you would rather do it
-yourself.
+yourself, and the place to look if you want to build from source.
 
-## Build the CLI
+## Download the CLI
 
-JDK 17+ and Maven. The decompilers are bundled into the jar, so nothing else is needed.
+One jar, 6 MB, with the decompilers bundled inside it — there is nothing else to install, and
+nothing to build. JDK 17+ is needed to run it.
 
 ```bash
-git clone https://github.com/anyanyna/anydecoder ~/.anydecoder
-cd ~/.anydecoder
-mvn -q package -DskipTests
+mkdir -p ~/.anydecoder
+curl -L -o ~/.anydecoder/anydecoder.jar \
+  https://github.com/anyanyna/anydecoder/releases/latest/download/anydecoder.jar
+java -jar ~/.anydecoder/anydecoder.jar --version
 ```
 
-That produces `anydecoder-cli/target/anydecoder.jar`. If your Maven points `central` at an
-unreachable internal mirror, add `-s /path/to/settings.xml`.
-
-Clone it somewhere durable. The skill's instructions look for the checkout at `~/.anydecoder`
-first, and ask you if it is not there — so an unusual location works, it just costs a question.
+Any other location works, but `~/.anydecoder/anydecoder.jar` is where the skill looks first, so
+putting it there saves the skill from having to ask you.
 
 ## Install the skill
 
-The skill is one directory, [`agents/skills/anydecoder/`](../agents/skills/anydecoder/), holding a
-`SKILL.md` in the [Agent Skills](https://agentskills.io) format. Copy the whole directory; the
-files beside `SKILL.md` are reference material it points at.
+The skill is one file, `SKILL.md`, in the [Agent Skills](https://agentskills.io) format. It rides
+along with every release, so it comes from the same place and the same version as the jar:
+
+```bash
+mkdir -p ~/.claude/skills/anydecoder
+curl -L -o ~/.claude/skills/anydecoder/SKILL.md \
+  https://github.com/anyanyna/anydecoder/releases/latest/download/SKILL.md
+```
+
+Point `-o` at whichever of these matches your agent:
 
 | Agent | This project | Every project |
 |---|---|---|
-| **Claude Code** | `.claude/skills/anydecoder/` | `~/.claude/skills/anydecoder/` |
-| **Codex** | `.agents/skills/anydecoder/` | `~/.agents/skills/anydecoder/` |
-| **Cursor** | `.cursor/skills/anydecoder/` or `.agents/skills/anydecoder/` | `~/.cursor/skills/anydecoder/` or `~/.agents/skills/anydecoder/` |
-| **Trae** | `.trae/skills/anydecoder/` or `.agents/skills/anydecoder/` | `~/.trae-cn/skills/anydecoder/` |
+| **Claude Code** | `.claude/skills/anydecoder/SKILL.md` | `~/.claude/skills/anydecoder/SKILL.md` |
+| **Codex** | `.agents/skills/anydecoder/SKILL.md` | `~/.agents/skills/anydecoder/SKILL.md` |
+| **Cursor** | `.cursor/skills/anydecoder/SKILL.md` or `.agents/skills/…` | `~/.cursor/skills/anydecoder/SKILL.md` or `~/.agents/skills/…` |
+| **Trae** | `.trae/skills/anydecoder/SKILL.md` or `.agents/skills/…` | `~/.trae-cn/skills/anydecoder/SKILL.md` |
 
 For a single project, `.agents/skills/` is the one to pick: Codex, Cursor and Trae all read it, and
 Cursor additionally reads `.claude/skills/` and `.codex/skills/` for compatibility. Claude Code is
 the exception — it wants `.claude/skills/`.
-
-```bash
-# one project, every agent that follows the .agents convention
-mkdir -p .agents/skills
-cp -r ~/.anydecoder/agents/skills/anydecoder .agents/skills/
-
-# one project, Claude Code
-mkdir -p .claude/skills
-cp -r ~/.anydecoder/agents/skills/anydecoder .claude/skills/
-
-# every project on this machine
-cp -r ~/.anydecoder/agents/skills/anydecoder ~/.claude/skills/
-```
 
 Two platform notes, both because they differ from the rest:
 
@@ -62,11 +55,26 @@ Two platform notes, both because they differ from the rest:
 ## The Claude Code plugin
 
 [`agents/`](../agents/) is also a Claude Code plugin, which ships the skill plus three repair
-subagents and two slash commands. Loading it needs no copying:
+subagents and two slash commands. It is the one part of an install that needs the repository
+rather than a release:
 
 ```bash
+git clone --depth 1 https://github.com/anyanyna/anydecoder ~/.anydecoder
 claude --plugin-dir ~/.anydecoder/agents
 ```
 
 That gives you `/anydecoder:recover` and `/anydecoder:verify` alongside the skill. The skill alone
 does everything either command does; the plugin is the more guided route.
+
+## Building from source
+
+Only needed if you intend to change the tool. JDK 17+ and Maven.
+
+```bash
+git clone https://github.com/anyanyna/anydecoder ~/.anydecoder
+cd ~/.anydecoder
+mvn -q package -DskipTests
+```
+
+The jar lands at `anydecoder-cli/target/anydecoder.jar` — again with the decompilers bundled in. If
+your Maven points `central` at an unreachable internal mirror, add `-s /path/to/settings.xml`.
