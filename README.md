@@ -19,23 +19,21 @@ source.
 
 ## Why this exists
 
-Source gets lost. Build outputs get archived, the repository does not, and one day there is a
-directory of `.class` files and no way to regain the code.
+Source gets lost. Build outputs get archived, the repository does not, and one day all that
+survives is a directory of `.class` files.
 
-Decompilers are good and getting better, but their output has an awkward property: **it always
-looks plausible.** A `finally` rendered as try-with-resources reads better than the original and
-silently adds exception-suppression semantics; a local declared as `FileWriter` instead of
-`Writer` compiles cleanly and binds to a different overload. Neither is visible by reading.
+Here is the trap: a decompiler will always hand you something that **looks** right. A `finally`
+rendered as try-with-resources reads *better* than the original while silently adding
+exception-suppression semantics. A local declared as `FileWriter` instead of `Writer` compiles
+cleanly and binds to a different overload. Neither is visible by reading. Neither fails a test that
+already passed. Both change what the program does.
 
-So the way out is not a better decompiler but a check that does not depend on reading:
+> Recompile the recovered source. If the bytecode matches the original, the source is faithful —
+> regardless of how it reads or what you think of it.
 
-> If you recompile the recovered source and the bytecode matches the original, the source is
-> faithful — regardless of how it reads or what you think of it.
-
-That check is mechanical and it is the whole point. The agent is what makes it usable: a real
-project produces hundreds of classes the checker cannot clear on its own, each needing someone to
-read the disassembly, decide and try again. The verdict — not the model's confidence — is the
-answer.
+That is a check which does not depend on reading — the only kind that can settle this. And an agent
+is what makes it usable, because a real project produces hundreds of classes the checker cannot
+clear on its own.
 
 ## What it can do
 
