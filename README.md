@@ -155,6 +155,7 @@ same corpus through this gate found **8**. The numbers are in
 
 | | |
 |---|---|
+| [Why this is needed](docs/index.md) | the long version, and what the check found on Commons Lang |
 | [How anydecoder decides](docs/verification.md) | every signal, every tolerance, and the measurement it came from |
 | [Decompiler failure modes](docs/pitfalls.md) | the defects this catches, and what only looks alarming |
 | [Architecture](docs/architecture.md) | the pipeline, module by module |

@@ -143,6 +143,7 @@ java -jar anydecoder-cli/target/anydecoder.jar difftest <原始-class> <重建-c
 
 | | |
 |---|---|
+| [为什么需要它](docs/index.zh.md) | 长文版，以及判据在 Commons Lang 上发现了什么 |
 | [判定方法](docs/verification.md) | 每一个信号、每一个容差，以及它来自哪次测量 |
 | [反编译失败模式](docs/pitfalls.md) | 能抓到的真实缺陷，以及那些看着像问题其实没问题的 |
 | [架构](docs/architecture.md) | 流水线，逐模块 |
