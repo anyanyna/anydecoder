@@ -64,49 +64,28 @@ papered over.
 
 ## Quickstart
 
-### 1. Build the CLI
+Two steps. Your agent does the rest.
 
-JDK 17+ and Maven. The decompilers ship inside the jar, so nothing else is needed.
+### 1. Paste this into your agent
 
-```bash
-git clone https://github.com/anyanyna/anydecoder && cd anydecoder
-mvn -q package -DskipTests
+```
+Install anydecoder.
+
+1. Clone https://github.com/anyanyna/anydecoder to ~/.anydecoder
+2. Build the CLI: cd ~/.anydecoder && mvn -q package -DskipTests    (needs JDK 17+)
+   It produces anydecoder-cli/target/anydecoder.jar, decompilers bundled inside.
+3. Install the skill at ~/.anydecoder/agents/skills/anydecoder into your own skills
+   directory, so you pick it up in this and future sessions.
+4. Confirm you can see the skill, and tell me the path to the jar.
 ```
 
-If your Maven points `central` at an internal mirror, add `-s /path/to/settings.xml`.
+Any agent that reads the [Agent Skills](https://agentskills.io) format can do this — Claude Code,
+Codex, Cursor, Trae and the rest. It knows where its own skills live; you do not have to.
 
-### 2. Install the skill
+On Claude Code the agent can also load the whole plugin, which adds three repair subagents and two
+slash commands: `claude --plugin-dir ~/.anydecoder/agents`.
 
-One file, [`agents/skills/anydecoder/SKILL.md`](agents/skills/anydecoder/SKILL.md), written to the
-[Agent Skills](https://agentskills.io) format and read unchanged by all three agents. Copy the
-whole directory.
-
-| Agent | One project | Every project |
-|---|---|---|
-| **Claude Code** | `.claude/skills/anydecoder/` | `~/.claude/skills/anydecoder/` |
-| **Codex** | `.agents/skills/anydecoder/` | `~/.agents/skills/anydecoder/` |
-| **Trae** | `.trae/skills/anydecoder/` | `%userprofile%/.trae-cn/skills/anydecoder/` |
-
-```bash
-mkdir -p .claude/skills .agents/skills
-cp -r /path/to/anydecoder/agents/skills/anydecoder .claude/skills/   # Claude Code
-cp -r /path/to/anydecoder/agents/skills/anydecoder .agents/skills/   # Codex and Trae
-```
-
-Codex searches `.agents/skills/` upward from your working directory, so a repository-root install
-is found everywhere inside it. Trae reads the same directory once you enable *Enable .agents
-skills directory* in its settings.
-
-Claude Code can take the whole plugin instead, which adds three repair subagents and two slash
-commands on top of the skill:
-
-```bash
-claude --plugin-dir /path/to/anydecoder/agents
-```
-
-### 3. Ask your agent
-
-Say it in your own words. The skill triggers on the situation, not on a keyword.
+### 2. Then just ask
 
 ```
 Recover the source from build/classes and prove it's faithful.
@@ -118,6 +97,8 @@ We lost the source to this jar. Get it back, and tell me which classes you could
 
 You get a source tree, a report, and a coverage number. **Read the coverage first** — a gate that
 reached a tenth of the input has told you nothing about the other nine tenths.
+
+Prefer to wire it up yourself? [Installing by hand](docs/installing.md).
 
 ## Using the CLI directly
 

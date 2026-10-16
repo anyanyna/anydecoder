@@ -56,46 +56,28 @@ anydecoder 是一份给 Claude Code、Codex、Trae 用的 skill，背后是一�
 
 ## 快速开始
 
-### 1. 构建 CLI
+两步。剩下的交给你的 Agent。
 
-需要 JDK 17+ 和 Maven。反编译器打包在 jar 里，不需要另外装。
+### 1. 把这段粘贴给你的 Agent
 
-```bash
-git clone https://github.com/anyanyna/anydecoder && cd anydecoder
-mvn -q package -DskipTests
+```
+安装 anydecoder。
+
+1. 把 https://github.com/anyanyna/anydecoder 克隆到 ~/.anydecoder
+2. 构建 CLI：cd ~/.anydecoder && mvn -q package -DskipTests    （需要 JDK 17+）
+   产出 anydecoder-cli/target/anydecoder.jar，反编译器已经打包在里面。
+3. 把 ~/.anydecoder/agents/skills/anydecoder 这个 skill 装进你自己的 skills 目录，
+   让当前和以后每个会话都能用上它。
+4. 确认你能看到这个 skill，然后把 jar 的路径告诉我。
 ```
 
-如果你的 Maven 把 `central` 指向了内网镜像，加一个 settings 文件：`-s /path/to/settings.xml`。
+读 [Agent Skills](https://agentskills.io) 规范的 Agent 都能做这件事 —— Claude Code、Codex、
+Cursor、Trae 等等。它自己知道 skills 该放在哪，你不用管。
 
-### 2. 安装 skill
+Claude Code 上还可以整个插件一起装，这样除了 skill 之外会多出三个修复用子 Agent 和两个斜杠命令：
+`claude --plugin-dir ~/.anydecoder/agents`。
 
-就是一个文件：[`agents/skills/anydecoder/SKILL.md`](agents/skills/anydecoder/SKILL.md)，按
-[Agent Skills](https://agentskills.io) 规范编写，三个 Agent 读的是同一份。拷贝整个目录。
-
-| Agent | 装到单个项目 | 装到所有项目 |
-|---|---|---|
-| **Claude Code** | `.claude/skills/anydecoder/` | `~/.claude/skills/anydecoder/` |
-| **Codex** | `.agents/skills/anydecoder/` | `~/.agents/skills/anydecoder/` |
-| **Trae** | `.trae/skills/anydecoder/` | `%userprofile%/.trae-cn/skills/anydecoder/` |
-
-```bash
-mkdir -p .claude/skills .agents/skills
-cp -r /path/to/anydecoder/agents/skills/anydecoder .claude/skills/   # Claude Code
-cp -r /path/to/anydecoder/agents/skills/anydecoder .agents/skills/   # Codex 与 Trae
-```
-
-Codex 会从当前工作目录逐级向上找 `.agents/skills/`，装在仓库根目录，仓库内任意位置都能被发现。
-Trae 也读同一个目录，需要在设置里打开 **启用 .agents 技能目录** 开关。
-
-Claude Code 还可以整个插件一起装，这样除了 skill 之外还多出三个修复用子 Agent 和两个斜杠命令：
-
-```bash
-claude --plugin-dir /path/to/anydecoder/agents
-```
-
-### 3. 对 Agent 说话
-
-用自己的话讲就行。skill 是靠场景触发的，不是靠关键词。
+### 2. 然后直接说
 
 ```
 把 build/classes 的源码恢复出来，并证明它是忠实的。
@@ -107,6 +89,8 @@ claude --plugin-dir /path/to/anydecoder/agents
 
 你会拿到一棵源码树、一份报告，和一个覆盖率数字。**先看覆盖率** —— 只覆盖了十分之一的判据，
 对另外十分之九什么结论也给不出。
+
+想自己动手装？看 [手动安装](docs/installing.md)。
 
 ## 直接用 CLI
 

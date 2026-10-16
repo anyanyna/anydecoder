@@ -23,17 +23,24 @@ right, that means nothing until the gate says the bytecode still matches.
 
 ## Setup
 
-The CLI must be built:
+Find the CLI jar before anything else. Look in this order:
+
+1. `~/.anydecoder/anydecoder-cli/target/anydecoder.jar` — where the install instructions put it.
+2. Any other path for it you have already established in this session.
+3. Ask the user where the checkout is.
+
+If there is no checkout, or the jar is missing, get one and build it:
 
 ```bash
-mvn -q package -DskipTests
+git clone https://github.com/anyanyna/anydecoder ~/.anydecoder
+cd ~/.anydecoder && mvn -q package -DskipTests
 ```
 
-If the machine's Maven is pointed at an unreachable internal repository, add
+JDK 17+ is required, and the decompilers are bundled into the jar so nothing else has to be
+installed. If the machine's Maven is pointed at an unreachable internal repository, add
 `-s <path-to-a-settings-file-pointing-at-Maven-Central>`.
 
-Locate the jar at `anydecoder-cli/target/anydecoder.jar`. All commands below assume
-`java -jar <that jar>`.
+All commands below assume `java -jar <that jar>`.
 
 ## The loop
 
