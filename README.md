@@ -62,7 +62,7 @@ papered over.
 
 ## See it work
 
-![anydecoder running on Apache Commons Lang: 9 of 366 classes need review](examples/demo.svg)
+![anydecoder running on Apache Commons Lang: 9 of 366 classes need review](examples/demo.gif)
 
 Decompile Apache Commons Lang — one of the most widely deployed Java libraries there is — and
 check the result. About thirty seconds:
