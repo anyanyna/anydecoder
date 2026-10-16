@@ -119,14 +119,22 @@ public final class ArtifactScanner {
 
     private static Path unpack(Path archive, Path destination) throws IOException {
         Files.createDirectories(destination);
+        // Both sides of the check below have to be absolute and normalised, or they are not
+        // comparable. Normalising only the entry leaves a "./" on the destination that the entry
+        // no longer has, so `-o ./out` makes every entry look like an escape -- including
+        // META-INF/MANIFEST.MF. Normalising the destination as well is not enough either: "-o ."
+        // normalises to a single-name path that no entry starts with. Resolving both against an
+        // absolute root is the form that holds for "." , "./out" and an absolute out dir alike.
+        Path root = destination.toAbsolutePath().normalize();
         List<Path> extracted = new ArrayList<>();
         try (InputStream in = Files.newInputStream(archive);
              ZipInputStream zip = new ZipInputStream(in)) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
-                Path target = destination.resolve(entry.getName()).normalize();
-                // Refuse entries that would escape the working directory.
-                if (!target.startsWith(destination)) {
+                Path target = root.resolve(entry.getName()).normalize();
+                // Refuse entries that would escape the working directory. An absolute entry name
+                // replaces the root outright in resolve(), so it fails this test too.
+                if (!target.startsWith(root)) {
                     throw new IOException("archive entry escapes the working directory: " + entry.getName());
                 }
                 if (entry.isDirectory()) {
