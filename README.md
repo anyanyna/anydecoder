@@ -37,18 +37,30 @@ project produces hundreds of classes the checker cannot clear on its own, each n
 read the disassembly, decide and try again. The verdict — not the model's confidence — is the
 answer.
 
-## What it does and does not establish
+## What it can do
 
-For every class the gate reaches it confirms the same exception table, members, field accesses,
-constants and rethrow counts, within a tolerance calibrated against real compiler differences.
+Turn a lost production application — 2,984 class files and nothing else — back into 2,451 source
+files you can read, compile, and **point at evidence for**.
 
-It does **not** claim the source is what the author wrote — names, comments, formatting and loop
-style are not in the bytecode. It says nothing about classes it did not reach, which is why
-coverage is printed beside every verdict and `HARNESS_ERROR` never counts as a pass.
+- **A whole project in one run.** A class directory, a jar, or a war goes in; a complete source
+  tree and a report come out.
+- **Every class backed by proof.** Nothing is handed to you because it looks right. Each class was
+  recompiled and compared against the bytecode it came from.
+- **The defects that would have shipped silently.** On a real corpus it found 8 defects a
+  compiler-based comparison could not distinguish — a log message truncated mid-string, a dead
+  local hoisted out of a `synchronized` monitor expression. Both compile. Both may pass tests.
+  Both change behaviour.
+- **An honest answer about the rest.** Coverage is printed beside every verdict, so you know what
+  it did not verify as clearly as what it did. Very few tools in this space will tell you where
+  they stopped looking — and that is precisely what makes the rest worth trusting.
 
 Verdicts are `EQUIVALENT`, `BENIGN`, `WAIVED` (safe) or `SUSPECT`, `DAMAGED`, `HARNESS_ERROR`
-(not safe). [How it decides](docs/verification.md) covers the signals, the recognised compiler
-artefacts, and the blind spots that are documented rather than papered over.
+(not safe). It will not claim the recovered names and comments are the author's — those are not in
+the bytecode — and it will not vouch for a class it never reached.
+
+[How it decides](docs/verification.md) covers the signals, the tolerances and the measurement each
+came from, the recognised compiler artefacts, and the blind spots that are documented rather than
+papered over.
 
 ## Quickstart
 
@@ -131,10 +143,9 @@ itself.
 ## Where this came from
 
 The method was worked out during a nine-day recovery of a production Java web application whose
-source had been lost — 2984 class files, 2451 recovered source files. That effort found **6 real
-defects** among files a compiler-based comparison could not distinguish, and four bugs in the
-checker itself, two of them silent. Re-running the same corpus through this gate found **8**,
-including a log message truncated from `集合深拷贝错误:` to `深拷贝错误:`. The numbers are in
+source had been lost. That effort found **6 real defects** among files a compiler-based comparison
+could not distinguish, and four bugs in the checker itself, two of them silent. Re-running the
+same corpus through this gate found **8**. The numbers are in
 [validation/RESULTS.md](validation/RESULTS.md).
 
 ## Documentation
