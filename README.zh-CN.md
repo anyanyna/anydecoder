@@ -11,7 +11,7 @@
 反编译  →  重新编译  →  拿重建的字节码与原 class 比对
 ```
 
-anydecoder 是一份给 Claude Code、Codex、Trae 用的 skill，背后是一个 CLI。把 class 目录、jar
+anydecoder 是一份给 Claude Code、Codex、Cursor、Trae 用的 skill，背后是一个 CLI。把 class 目录、jar
 或 war 指给你的 Agent：它会恢复出源码，然后把源码重新编译、与它来源的那个 class 文件比对，
 从而**证明**这次恢复是忠实的。证明不了的，会被报出来、附上具体差异，而不是被当成"已恢复的
 源码"悄悄交出去。
@@ -35,7 +35,8 @@ java -Xmx4g -jar ~/.anydecoder/anydecoder.jar run commons-lang3-3.14.0.jar -o de
 而剩下那些能编译的里面，判据仍然抓到一个类**调用了和原著不同的方法** —— 因为反编译器丢掉了作者
 写的一个强制转换。
 
-只用反编译器，这十个问题你一个都不会知道。
+加起来是十个问题：九个文件编译不过，一个编译得过却改变了行为。只用反编译器，这十个问题你一个
+都不会知道。
 
 [完整的走查过程与每一条的证据 →](examples/README.md)
 

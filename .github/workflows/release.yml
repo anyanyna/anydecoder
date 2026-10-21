@@ -32,6 +32,33 @@ jobs:
       - name: Check the jar runs
         run: java -jar anydecoder-cli/target/anydecoder.jar --version
 
+      # `--version` never touches the code that broke v0.1.0. A real decompile of a jar does, and
+      # it is run twice because the spelling of the output directory is part of the bug: `-o .`
+      # and `-o ./out` are the two forms the install instructions and the skill use, and the
+      # `./` prefix once made a legitimate manifest look like a zip-slip escape.
+      - name: Check a real decompile into . and ./out
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          jar="$GITHUB_WORKSPACE/anydecoder-cli/target/anydecoder.jar"
+          mkdir -p "$work/src" "$work/classes"
+          cat > "$work/src/Hello.java" <<'EOF'
+          public class Hello {
+              public static void main(String[] args) {
+                  System.out.println("hello");
+              }
+          }
+          EOF
+          javac -d "$work/classes" "$work/src/Hello.java"
+          (cd "$work/classes" && jar --create --file "$work/hello.jar" .)
+          cd "$work"
+          java -jar "$jar" run hello.jar -o .
+          test -f report.json
+          test -f work/src-cfr/Hello.java
+          java -jar "$jar" run hello.jar -o ./out
+          test -f out/report.json
+          test -f out/work/src-cfr/Hello.java
+
       # Without this, a tag pushed against a stale commit publishes a jar whose version is not the
       # version in its name, and nothing downstream can tell.
       - name: Check the tag matches the project version
@@ -39,6 +66,17 @@ jobs:
           version=$(grep -m1 -oP '(?<=<version>)[^<]+' pom.xml)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match the pom version $version"
+            exit 1
+          fi
+
+      # plugin.json is the second place the version lives: an agent installs the skill and reads
+      # its version from here, so it must not disagree with the jar it is meant to drive.
+      - name: Check the plugin manifest matches the project version
+        run: |
+          version=$(grep -m1 -oP '(?<=<version>)[^<]+' pom.xml)
+          plugin=$(grep -m1 -oP '(?<="version": ")[^"]+' agents/.claude-plugin/plugin.json)
+          if [ "$plugin" != "$version" ]; then
+            echo "::error::plugin.json version $plugin does not match the pom version $version"
             exit 1
           fi
 

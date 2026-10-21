@@ -7,11 +7,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
+        # The gate compares paths and classpaths, and those are where the two platforms differ:
+        # `-o ./out`, path separators in `--deps`, and artifact unpacking. A green Linux build
+        # says nothing about those.
+        os: [ ubuntu-latest, windows-latest ]
         # 17 is the minimum the code targets. 21 is included because enum code generation changed
         # in JDK 15 and the gate has to cope with rebuilds produced by a newer compiler than the
         # one that built the originals -- which is the normal case.
@@ -33,7 +37,10 @@ jobs:
       - name: Build and test
         run: mvn -B verify
 
+      # `bash` explicitly: on Windows the default shell would run each line separately and a
+      # failing early command could be hidden by the last one succeeding.
       - name: Check the CLI runs
+        shell: bash
         run: |
           java -jar anydecoder-cli/target/anydecoder.jar --version
           java -jar anydecoder-cli/target/anydecoder.jar run --help
@@ -44,5 +51,5 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: surefire-reports-jdk${{ matrix.java }}
+          name: surefire-reports-${{ matrix.os }}-jdk${{ matrix.java }}
           path: '**/target/surefire-reports/**'

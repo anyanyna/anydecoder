@@ -43,7 +43,10 @@ public final class Json {
     }
 
     private static String number(Number n) {
-        if (n instanceof Double d && (d.isNaN() || d.isInfinite())) {
+        // Both floating-point widths matter: Float.NaN.toString() is "NaN", which no JSON parser
+        // accepts. The report is read by an agent, so an unparseable field is a broken interface.
+        if ((n instanceof Double d && (d.isNaN() || d.isInfinite()))
+                || (n instanceof Float f && (f.isNaN() || f.isInfinite()))) {
             return "null";
         }
         return n.toString();

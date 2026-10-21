@@ -30,7 +30,7 @@ curl -L -o ~/.claude/skills/anydecoder/SKILL.md \
   https://github.com/anyanyna/anydecoder/releases/latest/download/SKILL.md
 ```
 
-Point `-o` at whichever of these matches your agent:
+Install it wherever your agent looks for skills:
 
 | Agent | This project | Every project |
 |---|---|---|

@@ -3,7 +3,10 @@ package com.anydecoder.core.report;
 import com.anydecoder.core.build.CompileOutcome;
 import com.anydecoder.core.gate.ClassGate;
 import com.anydecoder.core.gate.ClassVerdict;
+import com.anydecoder.core.gate.Divergence;
 import com.anydecoder.core.gate.GateReport;
+import com.anydecoder.core.gate.Severity;
+import com.anydecoder.core.gate.Verdict;
 import com.anydecoder.core.ingest.ArtifactSet;
 import com.anydecoder.core.pipeline.PipelineOutcome;
 import org.junit.jupiter.api.DisplayName;
@@ -72,6 +75,34 @@ class GateReportWriterTest {
 
         assertFalse(markdown.contains("## Not reached"),
                 "an empty section is noise, and its absence is itself the information");
+    }
+
+    @Test
+    @DisplayName("the JSON report carries the review list and escapes what it quotes")
+    void jsonCarriesTheReviewListAndEscapesDiagnostics() {
+        ClassVerdict review = new ClassVerdict(
+                "com/example/Review",
+                Verdict.DAMAGED,
+                List.of(),
+                List.of(),
+                List.of(new Divergence("invokes", "run()", Severity.HARD,
+                        "expected \"a\" but got b\\c\nnext line",
+                        Map.of("original", "a"))),
+                null);
+        PipelineOutcome outcome = outcome(List.of(review,
+                ClassVerdict.harnessError("com/example/Missing", "no class in the rebuild")));
+
+        String json = GateReportWriter.toJson(outcome);
+
+        assertTrue(json.contains("\"tool\": \"anydecoder\""), json);
+        assertTrue(json.contains("\"class\": \"com/example/Review\""), json);
+        assertTrue(json.contains("\"verdict\": \"DAMAGED\""), json);
+        assertTrue(json.contains("\"signal\": \"invokes\""), json);
+        assertTrue(json.contains("expected \\\"a\\\" but got b\\\\c\\nnext line"),
+                "a diagnostic is data, and its quotes and newlines have to survive as escapes");
+        assertTrue(json.contains("\"notReached\""), "unreached classes are listed in JSON too");
+        assertTrue(json.contains("com/example/Missing"), json);
+        assertTrue(json.contains("\"coverage\""), "coverage travels with the verdicts");
     }
 
     // ------------------------------------------------------------------------------------------

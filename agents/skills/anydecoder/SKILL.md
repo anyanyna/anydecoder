@@ -90,6 +90,11 @@ javac -g -d <classes-dir> -cp "<deps>:<original-classes>" @<sources-list>
 java -jar anydecoder-cli/target/anydecoder.jar gate <original-classes> <classes-dir> --format json
 ```
 
+**The classpath separator is platform-specific.** The `:` above is the Unix separator; on Windows
+the JDK expects `;` between entries. Using the wrong one silently truncates the classpath, and the
+rebuild then fails on symbols that are plainly present — which looks like a source defect and is
+not.
+
 Never accept a repair on inspection. Re-run the gate.
 
 ### 4. Triage what is left

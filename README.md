@@ -12,7 +12,7 @@ it right.**
 decompile  →  rebuild  →  compare the rebuilt bytecode with the original
 ```
 
-anydecoder is a skill for Claude Code, Codex and Trae, backed by a CLI. Point your agent at a
+anydecoder is a skill for Claude Code, Codex, Cursor and Trae, backed by a CLI. Point your agent at a
 directory of `.class` files, a jar, or a war: it recovers the source, then proves the recovery is
 faithful by recompiling it and comparing the result against the bytecode it came from. Whatever
 cannot be proved is reported with its specific difference, not quietly handed over as recovered
@@ -38,7 +38,8 @@ It recovers 247 source files from 404 classes. **Nine of those 247 do not compil
 engine — and of the ones that do, the gate still finds a class that calls a *different method*
 than the original, because the decompiler dropped an explicit cast the author had written.
 
-A decompiler alone hands you all ten and says nothing.
+That is ten problems in total: nine files that cannot be built, and one that builds but behaves
+differently. A decompiler alone hands you all ten and says nothing.
 
 [The full walkthrough, with the evidence for each →](examples/README.md)
 
