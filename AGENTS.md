@@ -56,7 +56,7 @@ JAVA_HOME=<JDK17> mvn verify
 - **Maven 3.6.3 的 `maven.config` 不支持 `#` 注释**。解析器按空白分词，注释会被当成非法参数，
   直接打印 usage 退出。该文件只放一行参数。
 - 本地仓库在 D 盘；不要把缓存或构建产物写进 C 盘。
-- `mvn verify` 全绿是提交前的最低要求；测试数 108（2026-10-22）。
+- `mvn verify` 全绿是提交前的最低要求；测试数 117（2026-10-22）。
 - CI：GitHub Actions，Ubuntu/Windows × JDK 17/21 四矩阵；`main` 分支；Actions 已升级到
   checkout v7、setup-java v6、upload-artifact v7。
 - 发布：`v*` 标签触发 `.github/workflows/release.yml`，上传 shaded jar 与 `SKILL.md`；
@@ -108,6 +108,12 @@ Windows Store 占位程序（退出码 49），也没有 `sqlite3`；需要读 S
 `META-INF/MANIFEST.MF` 误判为逃逸条目，拒绝真实 jar。修复后 `-o .` 与 `-o ./out` 两种形式
 都要测（这也是发布冒烟的一部分）。
 
+**空的 `package-info.java` 不会产出 class。** javac 对没有任何注解的 package 声明不生成
+`package-info.class`，门禁于是永远判它未到达。`PackageInfoRepair` 在编译前加一个 SOURCE retention
+的 `@Generated`（release ≤8 用 `javax.annotation`，≥9 用 `javax.annotation.processing`）让 javac
+生成结构相同的空接口。只在原 class 确实是空 synthetic package-info 时才加：门禁不比较注解，
+如果原 class 本来带注解，加注解会把反编译器丢注解这件事藏起来。
+
 ## 5. 验证方法论（历史结论）
 
 - `instrCount` 容差 = 相对 15% + 绝对 6 条指令，两者缺一不可。只用相对阈值会在小型访问器上
@@ -128,7 +134,7 @@ Windows Store 占位程序（退出码 49），也没有 `sqlite3`；需要读 S
   不是编译器世代差异。不要为此改编译策略。
 - 新增信号或类别必须带测量：先有语料上区分真实差异与编译器噪音的结果，再写代码。
 
-## 6. 项目现状（截至 2026-10-21）
+## 6. 项目现状（截至 2026-10-22）
 
 - 仓库：<https://github.com/anyanyna/anydecoder>，public，默认分支 `main`，Apache-2.0。
 - 版本：`0.1.1`；latest release 含 jar 与 `SKILL.md`；GitHub Pages：
@@ -139,7 +145,9 @@ Windows Store 占位程序（退出码 49），也没有 `sqlite3`；需要读 S
 - 真实语料（2984 个 class）上恢复出 2451 个源文件，门禁找到 8 个真实缺陷；其中 2 个是当年
   人工核查漏掉的。
 - Commons Lang 3.14.0 演示：404 个 class → 247 个源文件，其中 9 个编译不过；
-  门禁到达 366 个，357 个安全，9 个需复核，38 个未到达（不算通过）。
+  门禁到达 384 个，375 个安全，9 个需复核，20 个未到达（不算通过）。
+  20 个未到达 = `module-info` + 8 个编译失败源文件产出的 19 个类；原先 18 个空
+  `package-info` 已由 `PackageInfoRepair` 修复，不再计入未到达。
 - 推广基线：仓库访问数曾为 0，克隆主要来自 CI。Phase 0（样例、GIF、社交预览图）与
   Phase 1（两篇文章、Pages）已完成；渠道文案与答疑稿在 `validation/out/`（已 gitignore）。
 
@@ -168,6 +176,8 @@ Windows Store 占位程序（退出码 49），也没有 `sqlite3`；需要读 S
   用 Commons Lang 做真实演示；补 issue 模板、徽章、Discussions；推广 Phase 0/1 完成。
 - **2026-10-21**：追溯确认"合并到 rea"的请求出自 rea 项目自己的会话，不在 anydecoder；
   两条工作线相互独立。anydecoder 侧停在推广等待用户动手的状态。
+- **2026-10-22**：`PackageInfoRepair` 让空的 `package-info` 重新产出 class；补 JSON/opcode/
+  异常表测试与 CI/release 冒烟。Commons Lang 覆盖率 90.6%→95.0%，安全类 357→375，未到达 38→20。
 
 ## 9. 与新会话的交接约定
 

@@ -119,11 +119,14 @@ the source it came from is faithful. That is a mechanical check, not a matter of
 does not depend on anyone reading anything.
 
 I built this into a tool called anydecoder, and the run above is what it prints. On that
-commons-lang3 run: 366 of 404 classes reached, 357 classified safe, 9 needing review, 38 the check
+commons-lang3 run: 384 of 404 classes reached, 375 classified safe, 9 needing review, 20 the check
 could not reach at all.
 
-**The 38 are not passes, and the tool says so in those words.** They are classes with no
-counterpart in the rebuild, all of them tracing back to the nine files that would not compile.
+**The 20 are not passes, and the tool says so in those words.** They are classes with no
+counterpart in the rebuild: the module descriptor, which cannot be built at release 8, and the
+classes from the eight files that would not compile. (Eighteen `package-info` classes used to be
+in that list; the tool now emits them by adding a source-retention annotation when the original is
+an empty synthetic interface.)
 Coverage is printed next to every verdict, every time, because a pass rate without a coverage
 number is a number that means nothing.
 

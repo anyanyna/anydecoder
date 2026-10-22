@@ -22,7 +22,7 @@ anydecoder 是一份给 Claude Code、Codex、Cursor、Trae 用的 skill，背�
 
 ## 看看它实际跑起来
 
-![anydecoder 跑在 Apache Commons Lang 上：366 个类里 9 个需要复核](examples/demo.gif)
+![anydecoder 跑在 Apache Commons Lang 上](examples/demo.gif)
 
 拿 Apache Commons Lang —— 部署最广的 Java 库之一 —— 反编译一遍再验证。大约三十秒：
 

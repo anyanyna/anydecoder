@@ -12,19 +12,20 @@ Nothing here is a fixture prepared for the occasion. It is a library that ships 
 large number of Java applications, and the findings are whatever the two engines actually produce
 on it.
 
-![The run, at the end: 9 of 366 classes need review](demo.png)
+![The run, at the end: 9 classes need review](demo.png)
 
 ## What you get
 
 ```
+[build] annotated 18 empty package-info file(s) so javac emits the class
 [build] compiling 247 source file(s) at release 8
 [build] 238 compiled, 46 substituted from another engine, 9 set aside, 11 round(s)
-[gate] 366/404 reached, 354 safe, 12 need review
+[gate] 384/404 reached, 372 safe, 12 need review
 [substitute] org/apache/commons/lang3/JavaVersion: DAMAGED -> EQUIVALENT from src-vineflower
 [substitute] org/apache/commons/lang3/concurrent/EventCountCircuitBreaker: DAMAGED -> EQUIVALENT from src-vineflower
 [substitute] org/apache/commons/lang3/time/DateFormatUtils: SUSPECT -> EQUIVALENT from src-vineflower
 [substitute] 3 of 3 improved
-[gate] 366/404 reached, 357 safe, 9 need review
+[gate] 384/404 reached, 375 safe, 9 need review
 ```
 
 Three things in there are worth noticing, because they are the difference between a check and a
@@ -47,17 +48,21 @@ gate relaxing — it is the gate getting a better answer.
 | | |
 |---|---:|
 | classes found | 404 |
-| reached by the gate | 366 (90.6%) |
-| classified safe | 357 |
+| reached by the gate | 384 (95.0%) |
+| classified safe | 375 |
 | need review | 9 |
 
-`EQUIVALENT` 350 · `BENIGN` 7 · `SUSPECT` 6 · `DAMAGED` 3 · `HARNESS_ERROR` 38.
+`EQUIVALENT` 368 · `BENIGN` 7 · `SUSPECT` 6 · `DAMAGED` 3 · `HARNESS_ERROR` 20.
 
 ## First: nine of the recovered files do not compile
 
-The 38 classes the gate never reached are not a mystery and not a pass. The rebuild produced no
-class file for any of them, and every one traces back to one of nine recovered source files that
-`javac` refused. These are the errors, verbatim:
+The 20 classes the gate never reached are not a mystery and not a pass. One is the module
+descriptor, which cannot be rebuilt at release 8. The other 19 are produced by the eight recovered
+source files that `javac` refused. (The count used to be 38: eighteen `package-info` classes were
+unreachable because `javac` emits nothing for an annotation-free package declaration. The tool now
+adds a `SOURCE`-retention `@Generated` to empty ones — only when the original class is an empty
+synthetic interface, so a dropped annotation cannot hide behind it.) These are the errors,
+verbatim:
 
 ```
 ArrayUtils.java                    method getComponentType in class ClassUtils cannot be applied

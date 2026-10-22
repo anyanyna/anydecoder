@@ -2,6 +2,7 @@ package com.anydecoder.core.pipeline;
 
 import com.anydecoder.core.build.CompileOutcome;
 import com.anydecoder.core.build.OtherEngineFallback;
+import com.anydecoder.core.build.PackageInfoRepair;
 import com.anydecoder.core.build.ProjectCompiler;
 import com.anydecoder.core.build.SourceFallback;
 import com.anydecoder.core.build.SourceTreeCompiler;
@@ -76,10 +77,15 @@ public final class DecoderPipeline {
         Map<String, Path> trees = decompilation.trees();
         Path primary = choosePrimary(options, trees, decompilation.failures(), log);
 
-        Map<String, Integer> normalizationCounts = Map.of();
+        Map<String, Integer> normalizationCounts = new LinkedHashMap<>();
         if (options.enableNormalization()) {
-            normalizationCounts = SourceNormalizerChain.standard()
-                    .applyTo(primary, log).filesPerPass();
+            normalizationCounts.putAll(SourceNormalizerChain.standard()
+                    .applyTo(primary, log).filesPerPass());
+        }
+        int packageInfoRepairs = PackageInfoRepair.repair(artifacts.projectClasses(), primary,
+                dominantRelease(artifacts.projectClasses()), log);
+        if (packageInfoRepairs > 0) {
+            normalizationCounts.put("R6-package-info", packageInfoRepairs);
         }
 
         OtherEngineFallback fallback = fallbackFrom(trees, primary);
