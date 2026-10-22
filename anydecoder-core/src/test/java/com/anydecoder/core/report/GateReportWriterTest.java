@@ -1,6 +1,7 @@
 package com.anydecoder.core.report;
 
 import com.anydecoder.core.build.CompileOutcome;
+import com.anydecoder.core.build.SourceTreeCompiler;
 import com.anydecoder.core.gate.ClassGate;
 import com.anydecoder.core.gate.ClassVerdict;
 import com.anydecoder.core.gate.Divergence;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -105,15 +107,49 @@ class GateReportWriterTest {
         assertTrue(json.contains("\"coverage\""), "coverage travels with the verdicts");
     }
 
+    @Test
+    @DisplayName("a missing diagnostic becomes an empty string, not a failed report")
+    void writesMissingTextAsEmpty() {
+        PipelineOutcome outcome = outcome(
+                List.of(ClassVerdict.harnessError("com/example/Missing", null)),
+                List.of(new SourceTreeCompiler.ExcludedSource(
+                        Path.of("Broken.java"), null, false)));
+
+        String json = GateReportWriter.toJson(outcome);
+
+        assertTrue(json.contains("\"note\": \"\""), json);
+        assertTrue(json.contains("\"reason\": \"\""), json);
+    }
+
+    @Test
+    @DisplayName("JSON fields keep the order the writer chose")
+    void keepsJsonFieldOrderStable() {
+        PipelineOutcome outcome = outcome(List.of(
+                ClassVerdict.harnessError("com/example/Missing", "no class in the rebuild")));
+
+        String json = GateReportWriter.toJson(outcome);
+
+        int classField = json.indexOf("\"class\": \"com/example/Missing\"");
+        int noteField = json.indexOf("\"note\": \"no class in the rebuild\"");
+        assertTrue(classField >= 0, json);
+        assertTrue(noteField > classField, "class should precede note: " + json);
+        assertEquals(json, GateReportWriter.toJson(outcome), "two identical runs must agree");
+    }
+
     // ------------------------------------------------------------------------------------------
 
     private static PipelineOutcome outcome(List<ClassVerdict> verdicts) {
+        return outcome(verdicts, List.of());
+    }
+
+    private static PipelineOutcome outcome(List<ClassVerdict> verdicts,
+                                           List<SourceTreeCompiler.ExcludedSource> unbuildable) {
         ArtifactSet artifacts = new ArtifactSet(Path.of("classes"), List.of(),
                 ArtifactSet.Layout.LOOSE_CLASSES);
         return new PipelineOutcome(artifacts, Map.of("cfr", Path.of("src-cfr")),
                 Path.of("src-cfr"),
                 new CompileOutcome(true, List.of(), Path.of("classes")),
-                List.of(),
+                unbuildable,
                 List.of(),
                 List.of(),
                 new GateReport(verdicts),

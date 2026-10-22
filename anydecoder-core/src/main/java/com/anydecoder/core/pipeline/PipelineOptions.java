@@ -8,7 +8,7 @@ import java.util.List;
  *
  * @param input     a class directory, a jar, or a war
  * @param workDir   scratch space for the decompiled trees and the rebuild
- * @param outputDir where the report and the recovered source are written
+ * @param outputDir where the report is written; the recovered source is under its work directory
  * @param engines   engine ids to run, in order; the first is the primary source tree
  * @param enableNormalization whether to run the source cleanup passes
  * @param tryAlternativeEngines after gating, offer each class the gate was unhappy with to the

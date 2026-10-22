@@ -34,7 +34,8 @@ public final class RunCommand implements Callable<Integer> {
     private Path input;
 
     @CommandLine.Option(names = {"-o", "--output"},
-            description = "Where the report and the recovered source go. Default: ./anydecoder-out")
+            description = "Directory for the report; recovered source and scratch go under it."
+                    + " Default: ./anydecoder-out")
     private Path output;
 
     @CommandLine.Option(names = {"--work"},

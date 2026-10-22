@@ -483,8 +483,7 @@ public final class GateReportWriter {
 
         List<Object> unreached = new ArrayList<>();
         for (ClassVerdict verdict : report.harnessErrors()) {
-            unreached.add(Map.of("class", verdict.className(), "note",
-                    verdict.note() == null ? "" : verdict.note()));
+            unreached.add(ordered("class", verdict.className(), "note", text(verdict.note())));
         }
         root.put("notReached", unreached);
 
@@ -501,14 +500,14 @@ public final class GateReportWriter {
         // repairing; an API the JDK removed needs a different JDK or a decision, and no amount
         // of editing the decompiled source will help.
         root.put("uncompilableSource", outcome.sourceDefects().stream()
-                .map(e -> Map.of(
+                .map(e -> ordered(
                         "path", relativeTo(outcome.primarySource(), e.path()),
-                        "reason", e.reason() == null ? "" : e.reason()))
+                        "reason", text(e.reason())))
                 .toList());
         root.put("notRebuildableOnThisJdk", outcome.missingJdkApis().stream()
-                .map(e -> Map.of(
+                .map(e -> ordered(
                         "path", relativeTo(outcome.primarySource(), e.path()),
-                        "reason", e.reason() == null ? "" : e.reason()))
+                        "reason", text(e.reason())))
                 .toList());
 
         root.put("cleanupPasses", new LinkedHashMap<String, Object>(outcome.normalization()));
@@ -517,17 +516,18 @@ public final class GateReportWriter {
 
         if (outcome.waivers() != null && (outcome.waivers().size() > 0
                 || !outcome.waivers().rejected().isEmpty())) {
-            root.put("waivers", Map.of(
-                    "loaded", outcome.waivers().size(),
-                    "accepted", outcome.gate().waived().stream()
-                            .map(ClassVerdict::className).toList(),
-                    "matchedNothing", outcome.waivers().stale().stream()
-                            .map(w -> Map.of("class", w.className(), "signals", w.signalList()))
-                            .toList(),
-                    "refused", outcome.waivers().rejected().stream()
-                            .map(r -> Map.of("class", r.className(),
-                                    "problem", r.reason(), "where", r.source()))
-                            .toList()));
+            Map<String, Object> waiverBlock = new LinkedHashMap<>();
+            waiverBlock.put("loaded", outcome.waivers().size());
+            waiverBlock.put("accepted", outcome.gate().waived().stream()
+                    .map(ClassVerdict::className).toList());
+            waiverBlock.put("matchedNothing", outcome.waivers().stale().stream()
+                    .map(w -> ordered("class", w.className(), "signals", w.signalList()))
+                    .toList());
+            waiverBlock.put("refused", outcome.waivers().rejected().stream()
+                    .map(r -> ordered("class", r.className(),
+                            "problem", text(r.reason()), "where", text(r.source())))
+                    .toList());
+            root.put("waivers", waiverBlock);
         }
 
         return Json.write(root);
@@ -571,5 +571,26 @@ public final class GateReportWriter {
         } catch (IllegalArgumentException e) {
             return file.toString();
         }
+    }
+
+    /**
+     * An insertion-ordered map built from alternating keys and values.
+     *
+     * <p>{@code Map.of} rejects null values, so one missing diagnostic would abort the whole
+     * report instead of leaving a field empty, and its iteration order is unspecified, which
+     * makes two identical runs produce different bytes. This report is read by a program, so
+     * both properties matter.
+     */
+    private static Map<String, Object> ordered(Object... keysAndValues) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < keysAndValues.length; i += 2) {
+            map.put((String) keysAndValues[i], keysAndValues[i + 1]);
+        }
+        return map;
+    }
+
+    /** A missing message is an empty string in the report, never a JSON null to interpret. */
+    private static String text(String value) {
+        return value == null ? "" : value;
     }
 }

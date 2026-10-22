@@ -56,11 +56,12 @@ JAVA_HOME=<JDK17> mvn verify
 - **Maven 3.6.3 的 `maven.config` 不支持 `#` 注释**。解析器按空白分词，注释会被当成非法参数，
   直接打印 usage 退出。该文件只放一行参数。
 - 本地仓库在 D 盘；不要把缓存或构建产物写进 C 盘。
-- `mvn verify` 全绿是提交前的最低要求；历史上测试数从 54 增长到 82+。
-- CI：GitHub Actions，JDK 17 与 21 双矩阵；`main` 分支；Actions 已升级到 checkout v7、
-  setup-java v6、upload-artifact v7。
+- `mvn verify` 全绿是提交前的最低要求；测试数 108（2026-10-22）。
+- CI：GitHub Actions，Ubuntu/Windows × JDK 17/21 四矩阵；`main` 分支；Actions 已升级到
+  checkout v7、setup-java v6、upload-artifact v7。
 - 发布：`v*` 标签触发 `.github/workflows/release.yml`，上传 shaded jar 与 `SKILL.md`；
-  稳定地址用 `/releases/latest/download/<asset>`。
+  稳定地址用 `/releases/latest/download/<asset>`。workflow 在 tag 时跑真实反编译冒烟
+  （`-o .` 与 `-o ./out`）并校验 `plugin.json` 版本，这两步不经过普通 push，只有打标签才执行。
 
 ## 4. 已知陷阱（都是实际踩过的）
 
